@@ -79,12 +79,13 @@ jobs:
             mkdir -p "work/$v"
             unzip -q -o "work/$v.zip" -d "work/$v"
             # them runtime CUDA (cublas/cudart) cho ban cuda
+            # ten asset cua cudart KHONG co so build: cudart-llama-bin-win-<variant>-x64.zip
             case "$v" in
               cuda-*)
                 curl -fsSL -o "work/$v-cudart.zip" \
-                  "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/cudart-llama-${LLAMA_TAG}-bin-win-${v}-x64.zip"
+                  "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/cudart-llama-bin-win-${v}-x64.zip"
                 unzip -q -o "work/$v-cudart.zip" -d "work/$v-cudart"
-                cp -f work/$v-cudart/*.{dll,dll} work/$v/ 2>/dev/null || true
+                find "work/$v-cudart" -name '*.dll' -exec cp -f {} "work/$v/" \; 2>/dev/null || true
               ;;
             esac
             # flatten: chi lay thu muc chua llama-server.exe
@@ -104,7 +105,7 @@ jobs:
                 work/portable/
           mkdir -p work/portable/runtime/llama.cpp
           srcdir=$(dirname "$(find work/cpu -name llama-server.exe | head -1)")
-          cp -f "$srcdir"/* work/portable/runtime/llama.cpp/
+          cp -rf "$srcdir"/* work/portable/runtime/llama.cpp/
           (cd work/portable && zip -r -X "$GITHUB_WORKSPACE/dist/ngu-portable-${{ github.ref_name }}.zip" .)
           ls -lh dist/
 
