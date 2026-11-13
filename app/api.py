@@ -7,7 +7,7 @@ import logging
 import uuid
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -53,7 +53,7 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     async def health() -> dict:
         return {
-            "board_url": f"http://{config.HOST}:{config.PORT}/",
+            "board_url": f"http://{config.HOST}:{config.PORT}/board",
             "default_model": config.DEFAULT_MODEL,
             "counts": store.count_by_status(),
             "active": runner.active(),
@@ -144,7 +144,16 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/", include_in_schema=False)
-    async def index() -> FileResponse:
+    async def index() -> RedirectResponse:
+        """Main UI = llama.cpp's own chat page, not the task-board."""
+        model = get_model(config.DEFAULT_MODEL) or next(iter(discover_models()), None)
+        if model is None:
+            return RedirectResponse("/board")
+        base = await runtime.ensure(model)
+        return RedirectResponse(base + "/")
+
+    @app.get("/board", include_in_schema=False)
+    async def board() -> FileResponse:
         return FileResponse(config.STATIC_DIR / "index.html")
 
     app.mount("/static", StaticFiles(directory=config.STATIC_DIR), name="static")
