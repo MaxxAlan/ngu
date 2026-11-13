@@ -35,7 +35,7 @@ ENV UV_LINK_MODE=copy \
     LA_LLAMA_DIR=/app/runtime/llama.cpp
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ca-certificates tar tini \
+    && apt-get install -y --no-install-recommends curl ca-certificates tar tini libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /uvx /bin/
@@ -54,6 +54,11 @@ COPY .config ./.config
 
 # --- llama.cpp runtime ---
 RUN set -eux; \
+    if [ "${LLAMA_BACKEND}" = "vulkan" ]; then \
+      apt-get update \
+      && apt-get install -y --no-install-recommends libvulkan1 \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi; \
     case "${LLAMA_BACKEND}" in \
       cpu)    asset="llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz" ;; \
       vulkan) asset="llama-${LLAMA_TAG}-bin-ubuntu-vulkan-x64.tar.gz" ;; \

@@ -23,8 +23,3 @@ updates:
     commit-message:
       prefix: "docker"
     labels: [dependencies, docker]
-
-  - package-ecosystem: gitsubmodule
-    directory: "/"
-    schedule:
-      interval: weekly

@@ -240,8 +240,12 @@ ACTION_KEYWORDS = (
 SAVE_KEYWORDS = ("luu", "save", "ghi ra", "export", "file")
 
 _FILE_HINT_RE = re.compile(r"[\w./\\-]+\.[A-Za-z]{2,5}\b")
-# absolute windows path, e.g. C:\Users\me\Desktop\.commic\HuyetThu
-_PATH_RE = re.compile(r"[A-Za-z]:[\\/][^\s\"'<>|]+")
+# absolute path: Windows ("C:\dir" / "D:/dir") hoac POSIX ("/home/user/dir").
+# lookbehind chong khop nham: "https://x" -> "s:/", "5/10" -> "/10".
+_PATH_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s\"'<>|]*"
+    r"|(?<![\w:.\-/])/(?:[^\s\"'<>|/]+/)*[^\s\"'<>|/]+)"
+)
 # chapter numbering: chapter69.txt / chapter_69 / Chuong 69
 _CHAPTER_RE = re.compile(r"(?i)chapter[ _-]?(\d+)")
 _CHAPTER_FILE_RE = re.compile(r"(?i)^(chapter[ _-]?)(\d+)$")
