@@ -654,4 +654,19 @@ async def run_agent(
             return {"answer": content, "steps": steps, "truncated": True}
     except Exception:  # noqa: BLE001
         pass
-    return {"answer": "", "steps": steps, "truncated": True}
+    # Last resort: never return a silent empty answer - surface whatever progress exists.
+    return {"answer": _best_effort_summary(steps, messages), "steps": steps, "truncated": True}
+
+
+def _best_effort_summary(steps: list[dict], messages: list[dict]) -> str:
+    """Scrape the last useful text out of a failed run instead of returning ''."""
+    for step in reversed(steps):
+        content = (step.get("content") or "").strip()
+        if content and not _only_tool_json(content):
+            return f"(partial - step limit reached)\n\n{content}"
+    for msg in reversed(messages):
+        if msg.get("role") == "tool":
+            result = str(msg.get("content") or "").strip()
+            if result:
+                return f"(partial - step limit reached, last tool result from {msg.get('name')})\n\n{result[:2000]}"
+    return ""

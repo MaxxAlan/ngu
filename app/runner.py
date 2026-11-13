@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from . import agent, attachments, config, router, store
-from .tools.common import allow_path, allow_write_path
+from .tools import memory
 from .tools.common import allow_path, allow_write_path
 
 log = logging.getLogger("local-agents.runner")
@@ -156,15 +156,37 @@ class Runner:
                         if not patched:
                             new_content.insert(0, {"type": "text", "text": hint})
                         user_content = new_content
-            messages = [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ]
+
+            checkpoint = json.loads(task.get("messages") or "[]")
+            resuming = bool(checkpoint)
+            if resuming:
+                messages = checkpoint
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Resuming after an interruption. Continue the task using the "
+                            "context above; do not repeat work already done."
+                        ),
+                    }
+                )
+                log.info("task %s resuming from checkpoint (%d messages)", task_id, len(messages))
+                progress = memory.memory_search(f"task:{task_id}:progress", limit=1)
+                if "no memory entries" not in progress:
+                    messages.append({"role": "user", "content": f"Last known progress:\n{progress}"})
+            else:
+                messages = [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ]
 
             steps: list[dict] = []
+            step_count = 0
 
             async def on_event(event: dict) -> None:
+                nonlocal step_count
                 if event.get("type") == "agent_step":
+                    step_count += 1
                     steps.append(
                         {
                             "index": event.get("step"),
@@ -173,7 +195,13 @@ class Runner:
                             "tool_results": [],
                         }
                     )
-                    store.update_task(task_id, steps=steps)
+                    store.update_task(task_id, steps=steps, messages=messages)
+                    if step_count % config.CHECKPOINT_INTERVAL == 0:
+                        summary = (event.get("content") or "")[:500] or json.dumps(
+                            event.get("tool_calls") or [], ensure_ascii=False
+                        )[:500]
+                        if summary.strip():
+                            memory.memory_save(f"task:{task_id}:progress", summary, tags="checkpoint")
                 elif event.get("type") == "tool_result":
                     for s in reversed(steps):
                         if s.get("index") == event.get("step"):
@@ -185,20 +213,23 @@ class Runner:
                                 }
                             )
                             break
-                    store.update_task(task_id, steps=steps)
+                    store.update_task(task_id, steps=steps, messages=messages)
                 event = {**event, "task_id": task_id}
                 self._emit(event)
 
             try:
                 target, min_chars = config.creative_target_info(task["prompt"])
-                result = await agent.run_agent(
-                    model,
-                    messages,
-                    on_event=on_event,
-                    stream=True,
-                    creative=config.is_creative(task["prompt"]),
-                    continue_path=str(target) if target else None,
-                    continue_min_chars=min_chars,
+                result = await asyncio.wait_for(
+                    agent.run_agent(
+                        model,
+                        messages,
+                        on_event=on_event,
+                        stream=True,
+                        creative=config.is_creative(task["prompt"]),
+                        continue_path=str(target) if target else None,
+                        continue_min_chars=min_chars,
+                    ),
+                    timeout=config.TASK_TIMEOUT,
                 )
                 answer = result.get("answer") or ""
                 saved = config.finalize_creative_output(task["prompt"], answer)
@@ -214,6 +245,7 @@ class Runner:
                     status="done",
                     result=answer,
                     steps=result.get("steps", steps),
+                    messages="[]",
                     finished_at=store.now(),
                 )
                 self._emit_task(final or task)
@@ -223,11 +255,24 @@ class Runner:
                     status="cancelled",
                     result="",
                     steps=steps,
+                    messages="[]",
                     error="cancelled",
                     finished_at=store.now(),
                 )
                 self._emit_task(final or task)
                 raise
+            except TimeoutError:
+                # Keep the checkpoint: a restart (or manual resubmit) can resume from it.
+                log.warning("task %s timed out after %ss", task_id, config.TASK_TIMEOUT)
+                final = store.update_task(
+                    task_id,
+                    status="failed",
+                    result="",
+                    steps=steps,
+                    error=f"timed out after {config.TASK_TIMEOUT}s (resumable)",
+                    finished_at=store.now(),
+                )
+                self._emit_task(final or task)
             except Exception as exc:  # noqa: BLE001 - failure is a task state
                 log.exception("task %s failed", task_id)
                 final = store.update_task(

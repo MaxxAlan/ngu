@@ -251,5 +251,24 @@ class LlamaRuntime:
     def running(self) -> list[str]:
         return [n for n, s in self._servers.items() if s.alive]
 
+    async def healthcheck_all(self) -> None:
+        """Ping every tracked server; stop any that's wedged (alive but not responding).
+
+        `Server.alive` only checks the process is still running, which misses a
+        hung-but-not-crashed llama-server. The next request's `ensure()` restarts
+        whatever this stops.
+        """
+        for name, srv in list(self._servers.items()):
+            if not srv.alive:
+                continue
+            try:
+                with urlopen(srv.base_url + "/health", timeout=3) as res:
+                    if res.status == 200:
+                        continue
+            except Exception:  # noqa: BLE001
+                pass
+            log.warning("llama-server for %s unresponsive, stopping", name)
+            await self.stop(name)
+
 
 runtime = LlamaRuntime()

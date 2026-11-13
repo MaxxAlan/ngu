@@ -116,6 +116,13 @@ AGENT_SHELL_TIMEOUT = _float("LA_AGENT_SHELL_TIMEOUT", 60)
 AGENT_MAX_OUTPUT = _int("LA_AGENT_MAX_OUTPUT", 4000)
 AGENT_ALLOW_ABS = _bool("LA_AGENT_ALLOW_ABS", False)
 
+# ---- long-task reliability: watchdog, resume, checkpoint ----------------
+TASK_TIMEOUT = _float("LA_TASK_TIMEOUT", 1200)
+CHECKPOINT_INTERVAL = max(1, _int("LA_CHECKPOINT_INTERVAL", 3))
+MAX_RESUME_ATTEMPTS = max(0, _int("LA_MAX_RESUME_ATTEMPTS", 3))
+MEMORY_MAX_ENTRIES = _int("LA_MEMORY_MAX_ENTRIES", 2000)
+MEMORY_MAX_AGE_DAYS = _int("LA_MEMORY_MAX_AGE_DAYS", 30)
+
 # ---- novel project ------------------------------------------------------
 NOVEL_TARGET_WORDS = _int("LA_NOVEL_TARGET_WORDS", 1800)
 NOVEL_MIN_SCORE = _float("LA_NOVEL_MIN_SCORE", 0.70)
@@ -178,9 +185,10 @@ SYSTEM_PROMPT = _get(
 AGENT_SYSTEM_PROMPT = (
     "You are a local coding agent running on llama.cpp. "
     "Always reply in the same language as the user (use Vietnamese if the user writes Vietnamese).\n"
-    "Tools available: read_file, write_file, append_file, edit_file, list_dir, list_tree, glob_files, "
-    "search_files, mkdir, move_path, remove_path, run_shell, "
-    "memory_save, memory_search, memory_list, memory_delete.\n\n"
+    "Tools available (12 total): read_file, write_file, append_file, edit_file, "
+    "list_dir (set recursive=true for a full tree, or pattern='*.py' to find files by name), "
+    "search_files, run_shell (also use this for mkdir/move/rename/delete), "
+    "memory_save, memory_search, inspect_data, read_files_tool, web_search.\n\n"
     "CRITICAL RULES (follow strictly):\n"
     "1. ALWAYS give a text answer after tool calls. Never end a turn with only a tool call.\n"
     "2. When asked to write/create/edit a file: use write_file or edit_file to SAVE it. "

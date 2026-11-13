@@ -10,14 +10,16 @@ from app.router import route_model, get_available_roles
 
 
 def test_registry_has_new_tools():
+    # Consolidated to a 12-tool surface for weak local models: office readers
+    # (read_excel/read_docx/read_pdf) and niche tools (analyze_seb,
+    # inspect_project) are no longer model-facing - inspect_data/
+    # read_files_tool cover the same ground with less ambiguity.
     tool_names = {t["function"]["name"] for t in TOOLS}
-    assert "read_excel" in tool_names
-    assert "read_docx" in tool_names
-    assert "read_pdf" in tool_names
+    assert len(tool_names) == 12
     assert "inspect_data" in tool_names
     assert "read_files_tool" in tool_names
-    assert "analyze_seb" in tool_names
-    assert "inspect_project" in tool_names
+    assert "read_excel" not in tool_names
+    assert "analyze_seb" not in tool_names
 
 
 def test_read_files_tool_folder(workspace):

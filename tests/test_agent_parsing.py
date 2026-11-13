@@ -15,9 +15,9 @@ def test_plain_json_tool_call():
 
 
 def test_tool_call_tag():
-    calls = parse_tool_calls('<tool_call>{"name": "list_tree", "arguments": {}}</tool_call>')
+    calls = parse_tool_calls('<tool_call>{"name": "list_dir", "arguments": {}}</tool_call>')
     assert len(calls) == 1
-    assert calls[0]["name"] == "list_tree"
+    assert calls[0]["name"] == "list_dir"
 
 
 def test_unknown_tool_is_ignored():

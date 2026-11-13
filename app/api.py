@@ -17,8 +17,10 @@ from .mcp_server import build_mcp
 from .models import discover_models, get_model
 from .router import get_available_roles
 from .runner import runner, running
+from .tools.memory import memory_prune
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("local-agents.api")
 
 
 class TaskIn(BaseModel):
@@ -40,12 +42,25 @@ def create_app() -> FastAPI:
     mcp = build_mcp()
     mcp_app = mcp.streamable_http_app()
 
+    async def _health_watchdog() -> None:
+        while True:
+            await asyncio.sleep(60)
+            try:
+                await runtime.healthcheck_all()
+            except Exception:  # noqa: BLE001 - watchdog must never die
+                log.exception("health watchdog iteration failed")
+
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         store.init_db()
+        memory_prune(config.MEMORY_MAX_ENTRIES, config.MEMORY_MAX_AGE_DAYS)
+        watchdog = asyncio.create_task(_health_watchdog())
         async with mcp.session_manager.run():
             async with running():
                 yield
+        watchdog.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watchdog
         await runtime.stop_all()
 
     app = FastAPI(title="local-agents", lifespan=lifespan)

@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     error       TEXT NOT NULL DEFAULT '',
     attachments TEXT NOT NULL DEFAULT '[]',
     steps       TEXT NOT NULL DEFAULT '[]',
+    messages        TEXT NOT NULL DEFAULT '[]',
+    resume_attempts INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
     started_at  TEXT,
     finished_at TEXT
@@ -34,6 +36,8 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, created_at);
 MIGRATIONS = {
     "attachments": "ALTER TABLE tasks ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'",
     "steps": "ALTER TABLE tasks ADD COLUMN steps TEXT NOT NULL DEFAULT '[]'",
+    "messages": "ALTER TABLE tasks ADD COLUMN messages TEXT NOT NULL DEFAULT '[]'",
+    "resume_attempts": "ALTER TABLE tasks ADD COLUMN resume_attempts INTEGER NOT NULL DEFAULT 0",
 }
 
 
@@ -57,7 +61,19 @@ def init_db() -> None:
         for col, ddl in MIGRATIONS.items():
             if col not in existing:
                 con.execute(ddl)
-        # Tasks interrupted by a restart cannot be resumed: mark them failed.
+        # Tasks interrupted by a restart: resume from their checkpointed messages
+        # if any exist and the retry budget isn't exhausted, else mark failed.
+        resumable = con.execute(
+            "SELECT id FROM tasks WHERE status='running' AND messages != '[]' "
+            "AND resume_attempts < ?",
+            (config.MAX_RESUME_ATTEMPTS,),
+        ).fetchall()
+        if resumable:
+            ids = [r["id"] for r in resumable]
+            con.executemany(
+                "UPDATE tasks SET status='queued', resume_attempts=resume_attempts+1 WHERE id=?",
+                [(i,) for i in ids],
+            )
         con.execute(
             "UPDATE tasks SET status='failed', error='interrupted by restart', finished_at=? "
             "WHERE status='running'",
@@ -138,11 +154,13 @@ def update_task(task_id: str, **fields: Any) -> dict[str, Any] | None:
         "error",
         "attachments",
         "steps",
+        "messages",
+        "resume_attempts",
         "started_at",
         "finished_at",
     }
     patch = {k: v for k, v in fields.items() if k in allowed}
-    for k in ("attachments", "steps"):
+    for k in ("attachments", "steps", "messages"):
         if k in patch and not isinstance(patch[k], str):
             patch[k] = json.dumps(patch[k])
     if not patch:
