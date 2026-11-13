@@ -602,30 +602,37 @@ if ((Test-Path $LlamaExe) -and (-not $Force)) {
     $v = Invoke-Native -FilePath $LlamaExe -ArgumentList @('--version') -TimeoutSec 90
     if ($v.ExitCode -eq 0) {
         $devs = @(Get-LlamaDevices)
+        $hasCuda = Test-Path (Join-Path $LlamaDir 'ggml-cuda.dll')
+        $hasVulkan = Test-Path (Join-Path $LlamaDir 'ggml-vulkan.dll')
         if ($devs.Count -gt 0) {
             Write-Ok ('llama-server da co, chay tren: ' + (($devs | Select-Object -First 3) -join ', '))
             $runtimeOk = $true
             $runtimeNote = 'da co (device: ' + (($devs | Select-Object -First 1)) + ')'
-        } else {
-            $hasCuda = Test-Path (Join-Path $LlamaDir 'ggml-cuda.dll')
-            if ($hasCuda -and $Gpu.Vendor -ne 'nvidia') {
-                Write-Warn 'ban CUDA khong chay duoc tren may nay (khong co GPU NVIDIA) - tai ban ' + $variant
-                if (Install-LlamaRuntime -Variant $variant) {
-                    $devs = @(Get-LlamaDevices)
-                    Write-Ok ('da doi sang ban ' + $variant + ' (' + $devs.Count + ' thiet bi)')
-                    $runtimeOk = $true
-                    $runtimeNote = $variant
-                }
-            } elseif ($hasCuda -and $Gpu.Vendor -eq 'nvidia') {
-                Write-Warn 'ban CUDA chay nhung khong thay GPU nao - kiem tra lai driver NVIDIA (co the driver cu hon ban build)'
-                Write-Info ('goi y: tai ban cuda-12.4 bang setup.bat -Force neu driver >= 550')
+        } elseif ($hasCuda -and $Gpu.Vendor -eq 'nvidia') {
+            Write-Warn 'ban CUDA chay nhung khong thay GPU nao - kiem tra lai driver NVIDIA (co the driver cu hon ban build)'
+            Write-Info ('goi y: tai ban cuda-12.4 bang setup.bat -Force neu driver >= 550')
+            $runtimeOk = $true
+            $runtimeNote = 'cuda (can kiem tra driver)'
+        } elseif ($hasCuda) {
+            Write-Warn ('ban CUDA khong chay duoc tren may nay (khong co GPU NVIDIA) - tai ban ' + $variant)
+            if (Install-LlamaRuntime -Variant $variant) {
+                $devs = @(Get-LlamaDevices)
+                Write-Ok ('da doi sang ban ' + $variant + ' (' + $devs.Count + ' thiet bi)')
                 $runtimeOk = $true
-                $runtimeNote = 'cuda (can kiem tra driver)'
-            } else {
-                Write-Ok 'runtime se chay tren CPU'
-                $runtimeOk = $true
-                $runtimeNote = 'cpu'
+                $runtimeNote = $variant
             }
+        } elseif ($Gpu.Vendor -eq 'nvidia' -and -not $hasVulkan) {
+            Write-Warn ('runtime dang la ban CPU nhung may nay co GPU NVIDIA - tai ban ' + $variant)
+            if (Install-LlamaRuntime -Variant $variant) {
+                $devs = @(Get-LlamaDevices)
+                foreach ($d in $devs) { Write-Ok ('thiet bi: ' + $d) }
+                $runtimeOk = $true
+                $runtimeNote = $variant
+            }
+        } else {
+            Write-Ok 'runtime se chay tren CPU'
+            $runtimeOk = $true
+            $runtimeNote = 'cpu'
         }
     } else {
         Write-Warn ('llama-server.exe khong chay duoc (exit ' + $v.ExitCode + ') - se tai lai')

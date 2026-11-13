@@ -9,6 +9,36 @@ optional web board and an MCP server sharing the same task store.
 
 > **Cài đặt từ đầu:** xem [`SETUP.md`](SETUP.md) — hướng dẫn đầy đủ (Windows / Docker / Kubernetes / dev).
 
+## Cài đặt nhanh
+
+Không cần build gì ở máy bạn — mọi thứ đã được build sẵn và đóng gói sẵn.
+
+**Windows**
+
+```powershell
+git clone https://github.com/MaxxAlan/ngu.git
+cd ngu
+setup.bat          # Run as Administrator → xong
+```
+
+Hoặc tải bản portable (đã kèm source + llama.cpp CPU build sẵn, 25 MB):
+<https://github.com/MaxxAlan/ngu/releases/latest> → `ngu-portable-v0.1.0.zip` → giải nén → `setup.bat`.
+
+**Docker**
+
+```bash
+git clone https://github.com/MaxxAlan/ngu.git
+cd ngu
+docker compose --profile models run --rm fetch-models   # tải model (1 lần)
+docker compose up -d                                    # kéo image có sẵn
+```
+
+**Kubernetes**
+
+```bash
+kubectl apply -k k8s/
+```
+
 - CLI: `la run "..."`, `la chat` (interactive REPL, tool loop, drag-and-drop files/images)
 - Board: http://127.0.0.1:8765/
 - MCP (streamable HTTP): http://127.0.0.1:8765/mcp
