@@ -15,6 +15,10 @@ permissions:
 
 env:
   LLAMA_TAG: b12329
+  # tag can release (tu workflow_dispatch input, hoac tag push)
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  # ten image trong registry (docker yeu cau lowercase)
+  IMAGE_REF: ghcr.io/maxxalan/ngu
 
 jobs:
   docker:
@@ -107,14 +111,14 @@ jobs:
           mkdir -p work/portable/runtime/llama.cpp
           srcdir=$(dirname "$(find work/cpu -name llama-server.exe | head -1)")
           cp -rf "$srcdir"/* work/portable/runtime/llama.cpp/
-          (cd work/portable && zip -r -X "$GITHUB_WORKSPACE/dist/ngu-portable-${{ github.ref_name }}.zip" .)
+          (cd work/portable && zip -r -X "$GITHUB_WORKSPACE/dist/ngu-portable-${{ env.RELEASE_TAG }}.zip" .)
           ls -lh dist/
 
       - name: Tao source zip
         run: |
           set -eux
           mkdir -p dist
-          zip -r -X "dist/ngu-${{ github.ref_name }}-src.zip" \
+          zip -r -X "dist/ngu-${{ env.RELEASE_TAG }}-src.zip" \
             app static scripts tests k8s .config .github \
             Dockerfile docker-compose.yml pyproject.toml uv.lock \
             setup.bat ngu.cmd README.md SETUP.md LICENSE .gitignore .gitattributes \
@@ -126,9 +130,9 @@ jobs:
       - name: Export image (docker load offline)
         run: |
           set -eux
-          docker pull "ghcr.io/${{ github.repository }}:${{ github.ref_name }}"
-          docker save "ghcr.io/${{ github.repository }}:${{ github.ref_name }}" \
-            | gzip -1 > "dist/ngu-image-${{ github.ref_name }}.tar.gz"
+          docker pull "${{ env.IMAGE_REF }}:${{ env.RELEASE_TAG }}"
+          docker save "${{ env.IMAGE_REF }}:${{ env.RELEASE_TAG }}" \
+            | gzip -1 > "dist/ngu-image-${{ env.RELEASE_TAG }}.tar.gz"
           ls -lh dist/
           cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS.txt
 
@@ -154,7 +158,7 @@ jobs:
             dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
-            ## local-agents ${{ github.ref_name }}
+            ## local-agents ${{ env.RELEASE_TAG }}
 
             ### Cai dat nhanh (Windows)
 
@@ -167,19 +171,19 @@ jobs:
             Hoac tai bundle portable (source + llama.cpp CPU da build san):
 
             ```
-            https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-portable-${{ github.ref_name }}.zip
+            https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-portable-${{ env.RELEASE_TAG }}.zip
             ```
 
             ### Docker
 
             ```bash
             # cach 1: pull tu GHCR
-            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            docker pull ${{ env.IMAGE_REF }}:${{ env.RELEASE_TAG }}
             docker compose up -d
 
             # cach 2: khong can registry - tai image tarball roi load
-            curl -LO https://github.com/${{ github.repository }}/releases/latest/download/ngu-image-${{ github.ref_name }}.tar.gz
-            docker load -i ngu-image-${{ github.ref_name }}.tar.gz
+            curl -LO https://github.com/${{ github.repository }}/releases/latest/download/ngu-image-${{ env.RELEASE_TAG }}.tar.gz
+            docker load -i ngu-image-${{ env.RELEASE_TAG }}.tar.gz
             docker compose up -d
             ```
 
