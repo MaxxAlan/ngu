@@ -28,7 +28,7 @@ def read_file(path: str, offset: int = 0, limit: int = 400) -> str:
 
 
 def write_file(path: str, content: str) -> str:
-    p = resolve_path(path)
+    p = resolve_path(path, write=True)
     if p.is_dir():
         raise ToolError(f"path is a directory, give a file name: {p}")
     try:
@@ -41,7 +41,7 @@ def write_file(path: str, content: str) -> str:
 
 def append_file(path: str, content: str) -> str:
     """Append text to a file (creates it when missing)."""
-    p = resolve_path(path)
+    p = resolve_path(path, write=True)
     if p.is_dir():
         raise ToolError(f"path is a directory, give a file name: {p}")
     try:
@@ -54,7 +54,7 @@ def append_file(path: str, content: str) -> str:
 
 
 def edit_file(path: str, old_text: str, new_text: str, replace_all: bool = False) -> str:
-    p = resolve_path(path)
+    p = resolve_path(path, write=True)
     if not p.exists():
         raise ToolError(f"no such file: {p}")
     try:
@@ -167,7 +167,7 @@ def glob_files(pattern: str = "*", path: str = ".", max_results: int = 200) -> s
 
 
 def make_dir(path: str) -> str:
-    p = resolve_path(path)
+    p = resolve_path(path, write=True)
     try:
         p.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -176,7 +176,7 @@ def make_dir(path: str) -> str:
 
 
 def remove_path(path: str, recursive: bool = False) -> str:
-    p = resolve_path(path)
+    p = resolve_path(path, write=True)
     if not p.exists():
         raise ToolError(f"no such path: {p}")
     try:
@@ -193,8 +193,8 @@ def remove_path(path: str, recursive: bool = False) -> str:
 
 
 def move_path(src: str, dst: str) -> str:
-    s = resolve_path(src)
-    d = resolve_path(dst)
+    s = resolve_path(src, write=True)
+    d = resolve_path(dst, write=True)
     if not s.exists():
         raise ToolError(f"no such path: {s}")
     try:

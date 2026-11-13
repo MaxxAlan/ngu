@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config, llm, tools
+from .buffer_station import station
 
 log = logging.getLogger("local-agents.agent")
 
@@ -15,6 +16,9 @@ EventCb = Callable[[dict], Awaitable[None] | None]
 
 _STEP_MAX_TOKENS = 1536
 _FINAL_MAX_TOKENS = 4096
+
+# Max consecutive tool-call-only steps without a text answer before we force a reply.
+_MAX_SILENT_TOOL_STEPS = 4
 
 
 def _user_text(msg: dict) -> str:
@@ -305,6 +309,8 @@ async def run_agent(
     nudges = 0
     continuations = 0
     max_continuations = 6
+    # Track consecutive steps with tool calls but no meaningful text reply.
+    silent_tool_steps = 0
 
     async def emit(event: dict) -> None:
         if on_event is None:
@@ -313,12 +319,24 @@ async def run_agent(
         if hasattr(res, "__await__"):
             await res
 
+    # 1. Buffer Station Cache Check (Zero GPU inference)
+    cached_reply = station.get_cached_response(model, messages)
+    if cached_reply:
+        steps.append({"index": 0, "content": cached_reply, "tool_calls": []})
+        await emit({"type": "token", "step": 0, "delta": cached_reply})
+        await emit({"type": "agent_step", "step": 0, "content": cached_reply, "tool_calls": []})
+        return {"answer": cached_reply, "steps": steps}
+
     # Chit-chat / plain questions: don't advertise tools -> model answers, no tool loop.
-    use_tools = config.needs_tools(_last_user_text(messages), creative=creative_flag)
+    last_text = _last_user_text(messages)
+    has_atts = any("--- file:" in str(m.get("content", "")) or "--- file attached:" in str(m.get("content", "")) for m in messages)
+    use_tools = config.needs_tools(last_text, creative=creative_flag, has_attachments=has_atts)
     if not use_tools:
         content = await _plain_answer(model, messages, final_max_tokens, stream, emit)
         steps.append({"index": 0, "content": content, "tool_calls": []})
         await emit({"type": "agent_step", "step": 0, "content": content, "tool_calls": []})
+        if content:
+            station.store_cached_response(model, messages, content)
         return {"answer": content, "steps": steps}
 
     force_final = False
@@ -328,9 +346,27 @@ async def run_agent(
     llm_failures = 0
 
     for i in range(max_steps):
+        # 2. VRAM Protection: Compress old turns and truncate ancient tool logs
+        messages[:] = station.compress_messages_for_vram(messages)
         _trim_messages(messages)
         native: list[dict] = []
         req_max = step_max_tokens
+
+        # --- Force a plain-text answer if model has been silent too long ---
+        if silent_tool_steps >= _MAX_SILENT_TOOL_STEPS:
+            answer = await _final_answer(model, messages, final_max_tokens)
+            if answer.strip():
+                return {"answer": answer, "steps": steps}
+            # reset counter and add a stern nudge
+            silent_tool_steps = 0
+            messages.append({
+                "role": "user",
+                "content": (
+                    "IMPORTANT: Stop calling tools and provide the final answer in plain text now. "
+                    "Summarize what you found and answer the user's question directly."
+                ),
+            })
+
         try:
             if stream:
                 parts: list[str] = []
@@ -428,6 +464,9 @@ async def run_agent(
 
         if not calls:
             stripped = (content or "").strip()
+            # Reset silent counter – model produced text
+            silent_tool_steps = 0
+
             # Creative: keep the chapter on disk and long enough.
             if continue_path:
                 if not Path(continue_path).exists() and len(stripped) >= 400:
@@ -444,8 +483,9 @@ async def run_agent(
                         {"role": "user", "content": _continuation_msg(cur, continue_min_chars)}
                     )
                     continue
+
             # If model emitted a plan/fake JSON but nothing executable, nudge once/twice.
-            looks_like_tool = bool(re.search(r"```(?:json)?|<tool_call>|\"name\"\s*:\s*\"(read_file|write_file|edit_file|list_dir|search_files|run_shell)\"", stripped))
+            looks_like_tool = bool(re.search(r"```(?:json)?|<tool_call>|\"name\"\s*:\s*\"(read_file|write_file|edit_file|list_dir|search_files|run_shell|memory_save|memory_search)", stripped))
             if not stripped:
                 if nudges < 2:
                     nudges += 1
@@ -459,14 +499,23 @@ async def run_agent(
                         "role": "user",
                         "content": (
                             "Tool call not parsed. Send EXACTLY ONE fenced JSON block calling a real tool "
-                            "(one of: read_file, write_file, edit_file, list_dir, search_files, run_shell), "
+                            "(one of: read_file, write_file, edit_file, list_dir, search_files, run_shell, memory_save, memory_search), "
                             "or reply with the final answer in plain text. Do not list multiple/planned calls."
                         ),
                     }
                 )
                 continue
-            # Final answer path (or best-effort). If very short mid-task, allow model a chance, but usually return.
+            # Final answer path (or best-effort).
+            if content:
+                station.store_cached_response(model, messages, content)
             return {"answer": content, "steps": steps}
+
+        # Has tool calls – track silent steps (tool calls without useful text answer)
+        has_text_answer = bool((content or "").strip()) and not _only_tool_json(content)
+        if has_text_answer:
+            silent_tool_steps = 0
+        else:
+            silent_tool_steps += 1
 
         # Record assistant message
         assistant_msg: dict[str, Any] = {"role": "assistant", "content": content}
@@ -515,13 +564,20 @@ async def run_agent(
                 force_final = True
                 log.warning(error)
             else:
-                try:
-                    result = await tools.execute(_effective_tool(name, args, continue_path), args)
+                cached_tool = station.get_tool_cache(name, args)
+                if cached_tool is not None:
+                    result = cached_tool
                     error = ""
-                except Exception as exc:  # noqa: BLE001 - tool errors go back to the model
-                    result = ""
-                    error = str(exc)[:1200]
-                    log.warning("tool %s failed: %s", name, exc)
+                else:
+                    try:
+                        result = await tools.execute(_effective_tool(name, args, continue_path), args)
+                        error = ""
+                        if result:
+                            station.set_tool_cache(name, args, result)
+                    except Exception as exc:  # noqa: BLE001 - tool errors go back to the model
+                        result = ""
+                        error = str(exc)[:1200]
+                        log.warning("tool %s failed: %s", name, exc)
                 payload = (error + "\n" + result).strip() if error else result
 
             if not error and result:
@@ -599,4 +655,3 @@ async def run_agent(
     except Exception:  # noqa: BLE001
         pass
     return {"answer": "", "steps": steps, "truncated": True}
-

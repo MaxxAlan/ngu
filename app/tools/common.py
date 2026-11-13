@@ -53,13 +53,50 @@ def _ask_permission(action: str, target: str) -> bool:
     return ans in ("y", "yes")
 
 
-def resolve_path(path: str) -> Path:
+ALLOWED_PATHS: set[str] = set()
+ALLOWED_WRITE_PATHS: set[str] = set()
+
+
+def allow_path(path: str | Path) -> None:
+    """Allow read access to an external path explicitly referenced by the user."""
+    ALLOWED_PATHS.add(str(Path(path).resolve().as_posix()))
+
+
+def allow_write_path(path: str | Path) -> None:
+    """Pre-authorize a write target path explicitly provided by the user (e.g. Desktop novel folders)."""
+    resolved = str(Path(path).resolve().as_posix())
+    ALLOWED_WRITE_PATHS.add(resolved)
+    # Also grant read access to the same path
+    ALLOWED_PATHS.add(resolved)
+
+
+def _is_allowed(p: Path) -> bool:
+    target = p.resolve().as_posix()
+    for allowed in ALLOWED_PATHS:
+        if target == allowed or target.startswith(allowed + "/"):
+            return True
+    return False
+
+
+def _is_write_allowed(p: Path) -> bool:
+    target = p.resolve().as_posix()
+    for allowed in ALLOWED_WRITE_PATHS:
+        if target == allowed or target.startswith(allowed + "/"):
+            return True
+    return False
+
+
+def resolve_path(path: str, write: bool = False) -> Path:
     p = Path(path).expanduser()
     if not p.is_absolute():
         p = WORKSPACE / p
     p = p.resolve()
     if not _in_workspace(p):
-        if not _ask_permission("access path", str(p)):
+        if write and _is_write_allowed(p):
+            return p
+        if not write and _is_allowed(p):
+            return p
+        if not _ask_permission("modify path" if write else "access path", str(p)):
             raise PermissionDenied(
                 f"path '{path}' is outside the workspace ({WORKSPACE}). "
                 "Denied by user. Use /auto or set LA_AGENT_ALLOW_ABS=1 to allow."

@@ -160,7 +160,7 @@ def model_profile(model: str) -> dict[str, int]:
 
 
 # ---- global / workspace -------------------------------------------------
-# Tên lệnh gọi global (vd: ngu). Dùng với `la.bat install` để tạo lệnh và thêm vào PATH.
+# Tên lệnh gọi global (vd: ngu). Dùng với `ngu install` để tạo lệnh và thêm vào PATH.
 COMMAND_NAME = _get("LA_COMMAND_NAME", "ngu").strip() or "ngu"
 # Hỏi quyền khi tool thao tác ngoài thư mục làm việc (1=hỏi, 0=từ chối trừ khi /auto)
 ASK_PERMISSION = _bool("LA_ASK_PERMISSION", True)
@@ -178,26 +178,38 @@ SYSTEM_PROMPT = _get(
 AGENT_SYSTEM_PROMPT = (
     "You are a local coding agent running on llama.cpp. "
     "Always reply in the same language as the user (use Vietnamese if the user writes Vietnamese).\n"
-    "Tools (exact names only): read_file, write_file, append_file, edit_file, list_dir, list_tree, glob_files, search_files, mkdir, move_path, remove_path, run_shell.\n"
-    "Use tools to inspect and work on project files in the workspace. "
-    "Only exception: if a file/image is attached inline in the chat message, do not open it with a tool.\n"
-    "Tool call protocol (text mode): reply with EXACTLY ONE fenced JSON block and nothing else:\n"
+    "Tools available: read_file, write_file, append_file, edit_file, list_dir, list_tree, glob_files, "
+    "search_files, mkdir, move_path, remove_path, run_shell, "
+    "memory_save, memory_search, memory_list, memory_delete.\n\n"
+    "CRITICAL RULES (follow strictly):\n"
+    "1. ALWAYS give a text answer after tool calls. Never end a turn with only a tool call.\n"
+    "2. When asked to write/create/edit a file: use write_file or edit_file to SAVE it. "
+    "   Reading a file before editing is REQUIRED (read_file first, then edit_file).\n"
+    "3. After gathering enough info (2-3 tool calls), STOP calling tools and give the final answer.\n"
+    "4. Simple questions (chat, translate, explain): answer directly WITHOUT calling any tools.\n"
+    "5. Use memory_save to cache findings mid-task; use memory_search before re-reading files.\n\n"
+    "CREATIVE WRITING RULES (when asked to write stories, novels, chapters):\n"
+    "- Write the FULL content in the target language. Do NOT write placeholder text like 'Tiếng Việt'.\n"
+    "- If the user specifies a file path: use write_file to save the complete story text there.\n"
+    "- Write at least 1500 characters of actual story content. Never truncate or abbreviate.\n"
+    "- If the story is long, write the first part with write_file then continue with append_file.\n\n"
+    "Tool call protocol (text mode): reply with EXACTLY ONE fenced JSON block per step:\n"
     "```json\n"
     '{"name":"list_tree","arguments":{"path":".","max_depth":2}}\n'
     "```\n"
-    "Then wait for the tool result.\n"
+    "Then wait for the result, then reply with text or the next tool call.\n\n"
     "Rules:\n"
-    "- Act, don't plan. Make one real tool call per step (never a list of planned calls).\n"
-    "- Understand the user's request: if asked to analyze/find/explain project code or files, start by exploring (list_tree/list_dir/glob_files/read_file/search_files). If asked a simple question, chat, translation, or creative writing (stories, etc.), answer directly in plain text without tools.\n"
-    "- Paths relative to workspace unless absolute. For large codebases prefer list_tree/glob_files/search_files before deep reads. List each requested directory separately (e.g. list_dir engines then list_dir infrastructure), never join them into one path.\n"
-    "- If a path is missing, do not guess; inspect actual structure. Use small read ranges (offset/limit) when useful.\n"
-    "- Never repeat an identical tool call. If blocked or info is sufficient, stop calling tools and give the final answer in plain text in the user's language.\n"
-    "- If the user asks you to write or create code or text, produce it directly in the final answer. "
-    "Do not explore the workspace first unless the task is about existing files."
+    "- One tool call per message, then TEXT reply or next tool call.\n"
+    "- Paths relative to workspace unless absolute.\n"
+    "- Never repeat identical tool calls. If info is sufficient: answer in plain text.\n"
+    "- For coding tasks: read file → understand → edit_file/write_file → confirm done."
 )
 
 # allow overriding the whole prompt via env/config
 AGENT_SYSTEM_PROMPT = _get("LA_AGENT_SYSTEM_PROMPT", AGENT_SYSTEM_PROMPT)
+
+# Max consecutive tool-call-only steps before forcing a text reply
+AGENT_MAX_SILENT_STEPS = max(1, _int("LA_AGENT_MAX_SILENT_STEPS", 4))
 
 # ---- creative writing mode ------------------------------------------------
 CREATIVE_SYSTEM_PROMPT = _get(
@@ -233,7 +245,10 @@ ACTION_KEYWORDS = (
     # vietnamese (unaccented)
     "viet", "tao", "sua", "chay", "tim", "xem", "doc", "cap nhat", "them",
     "xoa", "doi", "ghi", "lap trinh", "chuong trinh", "ham", "sua loi", "loi code",
-    "cai dat", "chuyen", "phan tich", "giup",
+    "cai dat", "chuyen", "phan tich", "giup", "co gi", "trong file", "noi dung",
+    "co cc gi", "kiem tra", "soi", "doc thu", "excel", "docx", "pdf", "seb", "sep",
+    "bang tinh", "diem", "sheet", "cot", "hang", "du lieu", "data", "tim kiem",
+    "tra cuu", "thong tin", "chua gi", "bao gom", "bang diem", "danh sach",
 )
 
 # "save to file" hints -> creative mode may use write_file
@@ -246,9 +261,9 @@ _PATH_RE = re.compile(
     r"(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/][^\s\"'<>|]*"
     r"|(?<![\w:.\-/])/(?:[^\s\"'<>|/]+/)*[^\s\"'<>|/]+)"
 )
-# chapter numbering: chapter69.txt / chapter_69 / Chuong 69
-_CHAPTER_RE = re.compile(r"(?i)chapter[ _-]?(\d+)")
-_CHAPTER_FILE_RE = re.compile(r"(?i)^(chapter[ _-]?)(\d+)$")
+# chapter numbering: chapter69.txt / chapter_69 / Chuong 69 / chuong 69 / chap 69
+_CHAPTER_RE = re.compile(r"(?i)(?:chapter|chuong|chương|chap|c)[ _-]?(\d+)")
+_CHAPTER_FILE_RE = re.compile(r"(?i)^(chapter[ _-]?|chuong[ _-]?|chương[ _-]?)(\d+)$")
 
 
 def _norm(s: str) -> str:
@@ -295,15 +310,18 @@ def system_prompt_for(prompt: str) -> str:
     return CREATIVE_SYSTEM_PROMPT if is_creative(prompt) else AGENT_SYSTEM_PROMPT
 
 
-def needs_tools(prompt: str, creative: bool = False) -> bool:
+def needs_tools(prompt: str, creative: bool = False, has_attachments: bool = False) -> bool:
     """Should the model get file/shell tools for this request?
 
     Small local models love calling tools even for chit-chat, which burns steps and
     loops. Only advertise tools when the request actually implies working on files.
     """
-    if TOOLS_ALWAYS:
+    if TOOLS_ALWAYS or has_attachments:
         return True
     raw = prompt or ""
+    # Any attached file indicators in prompt
+    if "--- file:" in raw or "--- file attached:" in raw:
+        return True
     p = _norm(raw)
     if creative:
         # writers answer directly; tools only when a path/file is involved

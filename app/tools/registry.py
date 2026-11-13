@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import fs, search, shell
+from . import fs, memory, office, search, seb, shell, web
 from .common import ToolError
 
 # Tool specs (OpenAI-compatible). Keep small, clear set for local/small models.
@@ -11,7 +11,7 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read a text file with line numbers. Use offset/limit for large files.",
+            "description": "Read a text file with line numbers. Use offset/limit for large files. ALWAYS read a file before editing it.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -27,7 +27,7 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "write_file",
-            "description": "Create or overwrite a file. Creates parent directories.",
+            "description": "Create or overwrite a file. Creates parent directories. When asked to write/create code or text, USE THIS tool to actually save the file.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -60,7 +60,7 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Replace exact old_text with new_text. Fails if old_text not found or ambiguous (unless replace_all).",
+            "description": "Replace exact old_text with new_text in a file. ALWAYS read_file first to get exact content. Fails if old_text not found or ambiguous (unless replace_all).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -191,6 +191,180 @@ TOOLS: list[dict] = [
             },
         },
     },
+    # ---- memory tools -------------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_save",
+            "description": (
+                "Save a note, fact, snippet, or reference to persistent memory so it can be found later "
+                "without re-reading files. Use this to cache important findings mid-task."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Short unique identifier, e.g. 'api_design' or 'bug_root_cause'."},
+                    "content": {"type": "string", "description": "The text/snippet to store."},
+                    "tags": {"type": "string", "description": "Space-separated tags for search, e.g. 'python config error'.", "default": ""},
+                },
+                "required": ["key", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_search",
+            "description": "Search persistent memory by keyword/phrase. Use before reading large files to check if the info was already cached.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keywords to search for."},
+                    "limit": {"type": "integer", "description": "Max results.", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_list",
+            "description": "List all saved memory keys with tags and sizes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "default": 20},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_delete",
+            "description": "Delete a memory entry by key.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                },
+                "required": ["key"],
+            },
+        },
+    },
+    # ---- office & document tools -------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "read_excel",
+            "description": "Read Excel spreadsheets (.xlsx, .xlsm, .xls). Formats as Markdown table with sheet list and row/col stats.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to Excel file."},
+                    "sheet_name": {"type": "string", "description": "Specific sheet name to read (optional)."},
+                    "max_rows": {"type": "integer", "description": "Maximum rows to return.", "default": 100},
+                    "max_cols": {"type": "integer", "description": "Maximum columns to return.", "default": 30},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_docx",
+            "description": "Read Word documents (.docx). Extracts paragraphs, headings, and embedded tables.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to Word .docx file."},
+                    "max_paragraphs": {"type": "integer", "description": "Maximum paragraphs to extract.", "default": 300},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_pdf",
+            "description": "Read PDF documents (.pdf). Extracts clean text page-by-page.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to PDF file."},
+                    "max_pages": {"type": "integer", "description": "Maximum pages to read.", "default": 20},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_data",
+            "description": "Inspect structured data files (CSV, JSON, SQLite, Parquet, XML). Returns schema, record count, and sample data.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to data file."},
+                },
+                "required": ["path"],
+            },
+        },
+    },
+    # ---- web search tools ---------------------------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web using DuckDuckGo. No API key needed. Returns title, URL, and snippet for each result. Use for current information, documentation, or any factual lookup.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query string."},
+                    "max_results": {"type": "integer", "description": "Maximum number of results (1-20).", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    # ---- specialized project & system tools --------------------------------
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_seb",
+            "description": (
+                "Deep analysis for Safe Exam Browser (SEB) installations (like D:\\project\\hepii\\sep) or .seb config files. "
+                "Extracts security rules, lock-down policies, quit passwords, exam URLs, permitted/prohibited processes, and configs."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to SEB directory or .seb file.", "default": "D:\\project\\hepii\\sep"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "inspect_project",
+            "description": "Deeply inspect any software project architecture, tech stack (Rust, Tauri, Python, Node, C#), key configs, and structure.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Project root directory path.", "default": "."},
+                    "focus": {"type": "string", "description": "Specific focus area (optional)."},
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -235,6 +409,36 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
         except Exception:  # noqa: BLE001
             timeout_f = 60.0
         return await shell.run_shell(str(args.get("command", "")), timeout_f)
+    # memory tools
+    if name == "memory_save":
+        return memory.memory_save(str(args.get("key", "")), str(args.get("content", "")), str(args.get("tags", "")))
+    if name == "memory_search":
+        return memory.memory_search(str(args.get("query", "")), int(args.get("limit", 5)))
+    if name == "memory_list":
+        return memory.memory_list(int(args.get("limit", 20)))
+    if name == "memory_delete":
+        return memory.memory_delete(str(args.get("key", "")))
+    # office tools
+    if name == "read_excel":
+        return office.read_excel(
+            str(args.get("path", "")),
+            args.get("sheet_name"),
+            int(args.get("max_rows", 100)),
+            int(args.get("max_cols", 30)),
+        )
+    if name == "read_docx":
+        return office.read_docx(str(args.get("path", "")), int(args.get("max_paragraphs", 300)))
+    if name == "read_pdf":
+        return office.read_pdf(str(args.get("path", "")), int(args.get("max_pages", 20)))
+    if name == "inspect_data":
+        return office.inspect_data(str(args.get("path", "")))
+    # specialized tools
+    if name == "analyze_seb":
+        return seb.analyze_seb(str(args.get("path", "D:\\project\\hepii\\sep")))
+    if name == "inspect_project":
+        return seb.inspect_project(str(args.get("path", ".")), args.get("focus"))
+    if name == "web_search":
+        return web.web_search(str(args.get("query", "")), int(args.get("max_results", 5)))
 
     raise ToolError(
         f"unknown tool: {name}. Available tools: " + ", ".join(t["function"]["name"] for t in TOOLS)
