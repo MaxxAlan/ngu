@@ -127,3 +127,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Mo package cho public (link voi repo qua OCI source label)
+        run: |
+          set -e
+          owner="${{ github.repository_owner }}"
+          ok=0
+          for url in "/user/packages/container/ngu" "/users/${owner}/packages/container/ngu"; do
+            if gh api -X PATCH "$url" -f visibility=public >/dev/null 2>&1; then
+              echo "OK: $url -> public"; ok=1; break
+            fi
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::warning::Khong doi duoc visibility package qua API (can GITHUB_TOKEN co quyen package). Bao cao: $owner/ngu"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

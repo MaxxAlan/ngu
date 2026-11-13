@@ -7,6 +7,8 @@
 Local coding agent that runs **gguf models directly on llama.cpp**. CLI-first, with an
 optional web board and an MCP server sharing the same task store.
 
+> **Cài đặt từ đầu:** xem [`SETUP.md`](SETUP.md) — hướng dẫn đầy đủ (Windows / Docker / Kubernetes / dev).
+
 - CLI: `la run "..."`, `la chat` (interactive REPL, tool loop, drag-and-drop files/images)
 - Board: http://127.0.0.1:8765/
 - MCP (streamable HTTP): http://127.0.0.1:8765/mcp
