@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngu
+  namespace: ngu
+  labels:
+    app.kubernetes.io/name: ngu
+    app.kubernetes.io/component: agent
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ngu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ngu
+    spec:
+      securityContext:
+        fsGroup: 1000
+      initContainers:
+        # tai model gguf vao PVC (chi chay 1 lan, resume duoc neu bi interrupt)
+        - name: fetch-models
+          image: ghcr.io/maxxalan/ngu:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "scripts/fetch_models.py", "--set", "all", "--dest", "/app/models"]
+          env:
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ngu-secrets
+                  key: HF_TOKEN
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      containers:
+        - name: agent
+          image: ghcr.io/maxxalan/ngu:latest
+          imagePullPolicy: IfNotPresent
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: 8765
+          env:
+            - name: LA_HOST
+              value: "0.0.0.0"
+            - name: LA_PORT
+              value: "8765"
+            - name: LA_DATA_DIR
+              value: /app/data
+            - name: LA_MODELS_DIR
+              value: /app/models
+            - name: LA_LLAMA_DIR
+              value: /app/runtime/llama.cpp
+            - name: LA_DEFAULT_MODEL
+              value: qwen2.5-coder-3b
+            - name: LA_DEFAULT_VISION_MODEL
+              value: qwen2.5-vl-3b
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ngu-secrets
+                  key: HF_TOKEN
+              optional: true
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+            - name: data
+              mountPath: /app/data
+            - name: config
+              mountPath: /app/.config
+              subPath: config
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            failureThreshold: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: "1"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 12Gi
+          # --- GPU (NVIDIA) ---
+          # bo comment neu cluster co NVIDIA device plugin + node co GPU:
+          # limits:
+          #   nvidia.com/gpu: "1"
+          # image cuda: doi LLAMA_BACKEND=cuda-12.8 khi build image
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ngu-models
+        - name: data
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: ngu-config

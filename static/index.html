@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>local-agents · task board</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">◉</span>
+      <div>
+        <h1>local-agents</h1>
+        <p class="sub">coding agent chạy trên llama.cpp · CLI-first</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="status" id="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">đang kiểm tra…</span>
+      </div>
+      <a class="mcp-url" href="/api/health" target="_blank" rel="noreferrer">/mcp</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <h2>Giao task</h2>
+      <form id="taskForm">
+        <label>
+          <span>Tiêu đề</span>
+          <input id="title" name="title" placeholder="tự sinh từ prompt nếu trống" autocomplete="off" />
+        </label>
+        <label>
+          <span>Prompt</span>
+          <textarea id="prompt" name="prompt" rows="8" required
+            placeholder="Viết script Python đọc CSV sales.csv, in top 5 sản phẩm theo doanh thu…"></textarea>
+        </label>
+
+        <div class="dropzone" id="dropzone" tabindex="0" role="button"
+          aria-label="Kéo file hoặc ảnh vào đây, hoặc bấm để chọn">
+          <input type="file" id="fileInput" multiple hidden />
+          <p><strong>Kéo file / ảnh vào đây</strong> hoặc <span class="link">chọn file</span></p>
+          <p class="hint">ảnh → vision model · text → gửi kèm prompt · Ctrl+V để dán ảnh</p>
+        </div>
+        <div class="chips" id="attachments" hidden></div>
+
+        <div class="row">
+          <label>
+            <span>Agent</span>
+            <input id="agent" name="agent" placeholder="local-agent" autocomplete="off" />
+          </label>
+          <label>
+            <div class="label-row">
+              <span>Model</span>
+              <button type="button" id="reloadModelsBtn" class="link-btn" title="Quét lại models">🔄 quét lại</button>
+            </div>
+            <select id="model" name="model"></select>
+          </label>
+        </div>
+        <label class="check">
+          <input id="autoRun" name="autoRun" type="checkbox" checked />
+          <span>chạy ngay</span>
+        </label>
+        <button type="submit" class="primary" id="submitBtn">Giao task</button>
+        <p class="form-error" id="formError" hidden></p>
+      </form>
+    </aside>
+
+    <section class="board">
+      <div class="board-head">
+        <h2>Task</h2>
+        <div class="filters" id="filters">
+          <button class="chip active" data-status="">tất cả</button>
+          <button class="chip" data-status="queued">queued</button>
+          <button class="chip" data-status="running">running</button>
+          <button class="chip" data-status="done">done</button>
+          <button class="chip" data-status="failed">failed</button>
+          <button class="chip" data-status="draft">draft</button>
+        </div>
+      </div>
+      <div class="tasks" id="tasks">
+        <p class="empty" id="empty">chưa có task nào</p>
+      </div>
+    </section>
+  </main>
+
+  <template id="taskTpl">
+    <article class="task">
+      <div class="task-head">
+        <div class="task-title-wrap">
+          <span class="pill"></span>
+          <h3 class="task-title"></h3>
+        </div>
+        <div class="task-actions">
+          <button class="icon run" title="chạy lại">▶</button>
+          <button class="icon cancel" title="huỷ">■</button>
+          <button class="icon copy" title="copy kết quả">⧉</button>
+          <button class="icon delete" title="xoá">✕</button>
+        </div>
+      </div>
+      <div class="meta">
+        <span class="meta-agent"></span>
+        <span class="meta-model"></span>
+        <span class="meta-time"></span>
+        <span class="meta-id"></span>
+      </div>
+      <div class="attachments" hidden></div>
+      <pre class="task-prompt"></pre>
+      <details class="steps" hidden>
+        <summary>agent steps (<span class="step-count">0</span>)</summary>
+        <div class="step-list"></div>
+      </details>
+      <div class="live" hidden>
+        <span class="live-label">streaming…</span>
+        <pre class="live-text"></pre>
+      </div>
+      <pre class="task-result" hidden></pre>
+      <p class="task-error" hidden></p>
+    </article>
+  </template>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

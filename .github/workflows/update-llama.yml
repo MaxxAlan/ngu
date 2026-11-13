@@ -1,0 +1,54 @@
+name: Update llama.cpp pin
+
+on:
+  schedule:
+    # 06:00 UTC thu 2 hang tuan
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tim ban llama.cpp moi nhat
+        id: latest
+        run: |
+          set -eux
+          tag=$(curl -fsSL https://api.github.com/repos/ggml-org/llama.cpp/releases \
+            | jq -r '[.[] | select(.draft == false and .prerelease == false) | .tag_name] | .[0]')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: So voi ban dang pin trong Dockerfile
+        id: diff
+        run: |
+          set -eux
+          current=$(grep -oP 'ARG LLAMA_TAG=\K\S+' Dockerfile)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=${{ steps.latest.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          if [ "$current" != "${{ steps.latest.outputs.tag }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            sed -i "s/ARG LLAMA_TAG=$current/ARG LLAMA_TAG=${{ steps.latest.outputs.tag }}/" Dockerfile
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tao PR
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/bump-llama-cpp
+          title: "chore: bump llama.cpp ${{ steps.diff.outputs.current }} -> ${{ steps.diff.outputs.latest }}"
+          commit-message: "chore: bump llama.cpp to ${{ steps.diff.outputs.latest }}"
+          body: |
+            Auto bump cua llama.cpp runtime pin trong Dockerfile.
+
+            - cu: ${{ steps.diff.outputs.current }}
+            - moi: ${{ steps.diff.outputs.latest }}
+          labels: dependencies
+          delete-branch: true

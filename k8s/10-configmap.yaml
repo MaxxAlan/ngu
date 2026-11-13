@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ngu-config
+  namespace: ngu
+data:
+  # noi dung file .config cua project (cung noi dung voi app/config.py)
+  config: |
+    # ---- paths ----
+    LA_DATA_DIR=/app/data
+    LA_MODELS_DIR=/app/models
+    # ---- server ----
+    LA_HOST=0.0.0.0
+    LA_PORT=8765
+    # ---- llama.cpp ----
+    LA_LLAMA_DIR=/app/runtime/llama.cpp
+    LA_LLAMA_DEVICE=
+    LA_LLAMA_CTX=32768
+    LA_LLAMA_FALLBACK_CTX=8192
+    LA_LLAMA_NGL=999
+    LA_LLAMA_CACHE_TYPE=q8_0
+    LA_LLAMA_LOAD_TIMEOUT=300
+    LA_SWAP_UNLOAD=1
+    # ---- model & agent ----
+    LA_DEFAULT_MODEL=qwen2.5-coder-3b
+    LA_DEFAULT_VISION_MODEL=qwen2.5-vl-3b
+    LA_DEFAULT_AGENT=local-agent
+    LA_MAX_CONCURRENCY=1
+    LA_REQUEST_TIMEOUT=900
+    LA_TEMPERATURE=0.2
+    LA_AGENT_MAX_STEPS=12
+    LA_AGENT_SHELL_TIMEOUT=60
+    LA_AGENT_MAX_OUTPUT=4000
+    LA_AGENT_ALLOW_ABS=0
+    # ---- tokens ----
+    LA_FINAL_MAX_TOKENS=4096
+    LA_CREATIVE_FINAL_MAX_TOKENS=16384
+    LA_TOOLS_ALWAYS=0
+    LA_CALL_TOKENS=8192
+    LA_MAX_CALLS=12
+    # ---- global ----
+    LA_COMMAND_NAME=ngu
+    LA_ASK_PERMISSION=1

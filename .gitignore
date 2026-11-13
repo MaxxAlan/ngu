@@ -1,0 +1,41 @@
+# ---- python ----
+.venv/
+.venv.bak-*/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ---- local caches / runtime data ----
+cache/
+data/
+*.log
+
+# ---- models & llama.cpp runtime (lay bang setup.bat / docker / k8s) ----
+*.gguf
+*.gguf.part
+models/*
+!models/README.md
+runtime/llama.cpp/
+
+# ---- setup output ----
+setup-report.txt
+setup-report.*.txt
+
+# ---- secrets ----
+.env
+.env.*
+!.env.example
+k8s/secret.yaml
+
+# ---- editors / os ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

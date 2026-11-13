@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngu
+  namespace: ngu
+  labels:
+    app.kubernetes.io/name: ngu
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ngu
+  ports:
+    - name: http
+      port: 8765
+      targetPort: http
+      protocol: TCP
+---
+# NodePort de truy cap truc tiep tu may dev (http://<node-ip>:30876)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngu-nodeport
+  namespace: ngu
+  labels:
+    app.kubernetes.io/name: ngu
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: ngu
+  ports:
+    - name: http
+      port: 8765
+      targetPort: http
+      nodePort: 30876
+      protocol: TCP
