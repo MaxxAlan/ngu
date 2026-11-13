@@ -115,6 +115,14 @@ Image lấy từ đâu (theo thứ tự ưu tiên):
 | Tải file tarball (không cần registry) | `curl -LO https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-image-v0.1.0.tar`<br>`docker load -i ngu-image-v0.1.0.tar` | dùng khi máy không đăng nhập docker |
 | Tự build (đổi backend GPU) | `docker compose --profile build build` | local only |
 
+### Các tag image
+
+| Tag | Nội dung | Kích thước | Dùng khi |
+| --- | --- | --- | --- |
+| `ghcr.io/maxxalan/ngu:latest` | CPU | 600 MB | mọi máy (mặc định) |
+| `ghcr.io/maxxalan/ngu:v0.1.0` | CPU, ghim version | 600 MB | muốn bản cố định |
+| `ghcr.io/maxxalan/ngu:cuda` | NVIDIA CUDA 12.8 | 4.3 GB | máy có GPU NVIDIA + NVIDIA Container Toolkit |
+
 > `fetch-models` cũng dùng image có sẵn; nếu chưa pull được thì tải tarball ở trên trước.
 
 - Web board: <http://127.0.0.1:8765/>
