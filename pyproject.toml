@@ -9,7 +9,7 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.30",
     "httpx>=0.27",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.33",
     "mcp>=1.10,<2.0",
 ]
 
