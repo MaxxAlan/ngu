@@ -467,10 +467,33 @@ async def _cmd_lore(model: str) -> None:
     if not chars:
         err("could not extract characters")
         return
-    for name, info in chars.items():
-        role = info.get("role", "") if isinstance(info, dict) else ""
+    for name, char_info in chars.items():
+        role = char_info.get("role", "") if isinstance(char_info, dict) else ""
         print(f"  {BOLD}{name}{RESET} {DIM}{role}{RESET}")
     info(f"{len(chars)} character(s) in {novel.META_NAME}")
+    world = project.meta.get("world") or {}
+    if world:
+        print(f"  {BOLD}world{RESET} " + " | ".join(f"{k}: {v}" for k, v in world.items() if v))
+    threads = project.meta.get("threads") or []
+    if threads:
+        print(f"  {BOLD}open threads{RESET}")
+        for t in threads:
+            print(f"    - {t}")
+
+
+async def _cmd_ideas(model: str) -> None:
+    project = _novel_project()
+    if project is None:
+        return
+    ideas = await novel.suggest_ideas(project, model)
+    if not ideas:
+        err("could not generate ideas")
+        return
+    for i, idea in enumerate(ideas, 1):
+        print(f"  {BOLD}{i}. {idea['title']}{RESET}")
+        print(f"     {idea['pitch']}")
+        if idea.get("uses_thread"):
+            print(f"     {DIM}thread: {idea['uses_thread']}{RESET}")
 
 
 async def _cmd_novel(text: str, model: str) -> None:
@@ -687,7 +710,8 @@ CHAT_HELP = f"""{BOLD}commands{RESET}
   /write --review   chi review chuong vua viet
   /write --quick    che do viet nhanh (turn sau)
   /review [n]       review chuong n (mac dinh: chuong moi nhat)
-  /lore             cap nhat danh sach nhan vat tu cac chuong
+  /lore             cap nhat story bible (nhan vat, boi canh, tuyen truyen) tu cac chuong
+  /ideas            AI goi y 3-5 huong di tiep theo (dung nhan vat/tuyen truyen co san)
   /novel            tien do truyen (chuong, tu, quality trend)
   /novel combine    gop toan bo chuong thanh manuscript
   /attach <path>    queue a file or image for the next message
@@ -854,6 +878,9 @@ def cmd_chat(args: argparse.Namespace) -> int:
                 continue
             if line == "/lore":
                 loop.run_until_complete(_cmd_lore(model))
+                continue
+            if line == "/ideas":
+                loop.run_until_complete(_cmd_ideas(model))
                 continue
             if line == "/novel" or line.startswith("/novel "):
                 rest = line[len("/novel"):].strip()

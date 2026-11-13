@@ -10,7 +10,8 @@ flat chapter layout the author already uses:
 Pipeline for one chapter:
     plan -> write -> review (rules + LLM) -> retry -> persist
 
-Metadata file holds: title, genre, pov, character roster, plot threads,
+Metadata file holds: title, genre, pov, character roster (+ relationships), world
+(place/time/atmosphere/rules), open plot threads, next-chapter ideas,
 per-chapter outline/plan, word counts, review scores and quality trend.
 """
 
@@ -152,7 +153,9 @@ class Project:
         data.setdefault("genre", "")
         data.setdefault("pov", [])
         data.setdefault("characters", {})
+        data.setdefault("world", {})
         data.setdefault("threads", [])
+        data.setdefault("ideas", {})
         data.setdefault("chapters", {})
         data.setdefault("next", {})
         settings = dict(DEFAULT_SETTINGS)
@@ -259,12 +262,31 @@ class Project:
         for name, info in chars.items():
             bits = [name]
             if isinstance(info, dict):
-                for key in ("title", "role", "goals", "flaws"):
+                for key in ("title", "role", "goals", "flaws", "relationships"):
                     val = info.get(key)
                     if val:
                         bits.append(f"{key}: {val}")
             lines.append("- " + " | ".join(str(b) for b in bits))
         return "\n".join(lines)
+
+    def world_block(self) -> str:
+        world = self.meta.get("world") or {}
+        if not world:
+            return ""
+        lines = ["Setting:"]
+        for key in ("place", "time", "atmosphere", "rules"):
+            val = world.get(key)
+            if val:
+                lines.append(f"- {key}: {val}")
+        return "\n".join(lines) if len(lines) > 1 else ""
+
+    def threads_block(self) -> str:
+        threads = [t for t in (self.meta.get("threads") or []) if str(t).strip()]
+        if not threads:
+            return ""
+        return "Open plot threads (unresolved, weave at least one in):\n" + "\n".join(
+            f"- {t}" for t in threads
+        )
 
     def previous_tail(self, number: int, limit: int | None = None) -> str:
         prev = [n for n in self.chapter_files() if n < number]
@@ -290,6 +312,12 @@ class Project:
         roster = self.roster_block()
         if roster:
             parts.append(roster)
+        world = self.world_block()
+        if world:
+            parts.append(world)
+        threads = self.threads_block()
+        if threads:
+            parts.append(threads)
         plan = self.chapter_meta(number).get("plan")
         if plan:
             parts.append("Chapter plan:\n" + plan_block(plan))
@@ -910,7 +938,7 @@ async def write_scene_prose(
     return {"words": written, "rounds": rounds}
 
 
-LORE_PROMPT = """Extract the main characters of this novel excerpt.
+LORE_PROMPT = """Extract the story bible of this novel excerpt: characters, setting, open plot threads.
 
 EXCERPT:
 {text}
@@ -918,13 +946,15 @@ EXCERPT:
 Return ONLY a JSON object:
 {{
   "characters": {{
-    "Name": {{"title": "...", "role": "...", "goals": "...", "flaws": "..."}}
-  }}
+    "Name": {{"title": "...", "role": "...", "goals": "...", "flaws": "...", "relationships": "..."}}
+  }},
+  "world": {{"place": "...", "time": "...", "atmosphere": "...", "rules": "..."}},
+  "threads": ["unresolved plot thread 1", "unresolved plot thread 2"]
 }}"""
 
 
 async def extract_lore(project: Project, model: str, chapters: int = 5) -> dict[str, Any]:
-    """Refresh the character roster from the most recent chapters."""
+    """Refresh the story bible (characters, world, open threads) from the most recent chapters."""
     numbers = sorted(project.chapter_files())[-chapters:]
     if not numbers:
         return {}
@@ -945,12 +975,60 @@ async def extract_lore(project: Project, model: str, chapters: int = 5) -> dict[
         if not isinstance(info, dict):
             info = {"role": str(info)}
         clean[label] = {k: v for k, v in info.items() if isinstance(v, (str, int, float, list))}
+
+    world = data.get("world")
+    if isinstance(world, dict):
+        project.meta["world"] = {k: v for k, v in world.items() if isinstance(v, (str, int, float))}
+
+    threads = [str(t).strip() for t in (data.get("threads") or []) if str(t).strip()]
+    if threads:
+        project.meta["threads"] = threads
+
     if len(clean) >= 1:
         project.meta["characters"] = clean
         project.save()
         return clean
+    if world or threads:
+        project.save()
     log.warning("novel: roster extraction returned nothing usable")
     return {}
+
+
+IDEAS_PROMPT = """You are a story planner brainstorming what could happen next in this novel.
+
+{context}
+
+Propose 3 to 5 distinct directions for the NEXT chapter(s): twists, reveals, escalations,
+or quiet character beats. Each must use the existing characters/threads/world above,
+not invent an unrelated plot.
+
+Return ONLY a JSON object:
+{{
+  "ideas": [
+    {{"title": "short hook", "pitch": "1-2 sentences: what happens and why it matters", "uses_thread": "which open thread this resolves or escalates (or '')"}}
+  ]
+}}"""
+
+
+async def suggest_ideas(project: Project, model: str, n: int = 4) -> list[dict[str, Any]]:
+    """Adaptive 'what happens next' brainstorm, grounded in the existing roster/world/threads."""
+    number = project.next_number()
+    context = project.context_block(number) or "(no story context yet - this is the opening)"
+    prompt = IDEAS_PROMPT.format(context=context)
+    data = await _json_call(model, [{"role": "user", "content": prompt}], 1024)
+    ideas = [i for i in (data.get("ideas") or []) if isinstance(i, dict) and i.get("pitch")]
+    clean = [
+        {
+            "title": str(i.get("title") or "").strip() or "Untitled",
+            "pitch": str(i.get("pitch") or "").strip(),
+            "uses_thread": str(i.get("uses_thread") or "").strip(),
+        }
+        for i in ideas
+    ][:n]
+    if clean:
+        project.meta["ideas"] = {"for_chapter": number, "generated_at": _now(), "items": clean}
+        project.save()
+    return clean
 
 
 async def write_chapter(

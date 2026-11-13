@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import fs, memory, office, search, seb, shell, web
+from . import bulk, fs, memory, office, search, seb, shell, web
 from .common import ToolError
 
 # Tool specs (OpenAI-compatible). Keep small, clear set for local/small models.
@@ -365,6 +365,28 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_files_tool",
+            "description": (
+                "Read EVERY file inside a folder or archive (.zip/.tar/.tar.gz) in one call: "
+                "office docs (xlsx/docx/pdf), images (OCR via vision model), text/code, all combined "
+                "into one report. Use this instead of list_dir+read_file one by one when the user "
+                "points at a whole folder or a .zip/.tar and asks what's inside / to read it all."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Folder or archive path."},
+                    "max_files": {"type": "integer", "description": "Max files to read.", "default": 40},
+                    "ocr": {"type": "boolean", "description": "Run OCR on images.", "default": True},
+                    "ocr_limit": {"type": "integer", "description": "Max images to OCR (cost control).", "default": 5},
+                },
+                "required": ["path"],
+            },
+        },
+    },
 ]
 
 
@@ -437,6 +459,13 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
         return seb.analyze_seb(str(args.get("path", "D:\\project\\hepii\\sep")))
     if name == "inspect_project":
         return seb.inspect_project(str(args.get("path", ".")), args.get("focus"))
+    if name == "read_files_tool":
+        return await bulk.read_files_tool(
+            str(args.get("path", "")),
+            int(args.get("max_files", 40)),
+            bool(args.get("ocr", True)),
+            int(args.get("ocr_limit", 5)),
+        )
     if name == "web_search":
         return web.web_search(str(args.get("query", "")), int(args.get("max_results", 5)))
 
