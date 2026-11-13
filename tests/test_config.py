@@ -52,6 +52,16 @@ def test_creative_target(tmp_path: Path, monkeypatch):
     assert target.name == "chapter2.txt"
 
 
+def test_path_regex_supports_posix_and_windows():
+    # windows
+    assert config._PATH_RE.search("xem C:\\Users\\me\\novel") is not None
+    # posix
+    assert config._PATH_RE.search("xem /home/me/novel") is not None
+    # khong phai path
+    assert config._PATH_RE.search("xem https://example.com/a") is None
+    assert config._PATH_RE.search("5/10") is None
+
+
 def test_system_prompt_selection():
     assert config.system_prompt_for("viết truyện ngắn") == config.CREATIVE_SYSTEM_PROMPT
     assert config.system_prompt_for("fix the parser") == config.AGENT_SYSTEM_PROMPT
