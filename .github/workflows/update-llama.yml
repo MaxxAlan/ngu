@@ -40,7 +40,7 @@ jobs:
 
       - name: Tao PR
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: chore/bump-llama-cpp
           title: "chore: bump llama.cpp ${{ steps.diff.outputs.current }} -> ${{ steps.diff.outputs.latest }}"
