@@ -112,7 +112,7 @@ Image lấy từ đâu (theo thứ tự ưu tiên):
 | Cách | Lệnh | Ghi chú |
 | --- | --- | --- |
 | Pull từ GHCR | `docker compose up -d` | image `ghcr.io/maxxalan/ngu:latest` (600 MB, CPU) |
-| Tải file tarball (không cần registry) | `curl -LO https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-image-v0.1.0.tar.gz`<br>`docker load -i ngu-image-v0.1.0.tar.gz` | dùng khi máy không đăng nhập docker |
+| Tải file tarball (không cần registry) | `curl -LO https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-image-v0.1.0.tar`<br>`docker load -i ngu-image-v0.1.0.tar` | dùng khi máy không đăng nhập docker |
 | Tự build (đổi backend GPU) | `docker compose --profile build build` | local only |
 
 > `fetch-models` cũng dùng image có sẵn; nếu chưa pull được thì tải tarball ở trên trước.
