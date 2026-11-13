@@ -40,6 +40,13 @@ RUN apt-get update \
 
 COPY --from=uv /uv /uvx /bin/
 
+LABEL org.opencontainers.image.title="ngu" \
+      org.opencontainers.image.description="Local coding agent on llama.cpp (CLI + web board + MCP)" \
+      org.opencontainers.image.source="https://github.com/MaxxAlan/ngu" \
+      org.opencontainers.image.url="https://github.com/MaxxAlan/ngu" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.vendor="MaxxAlan"
+
 WORKDIR /app
 
 # --- python deps (cache theo lock file) ---
