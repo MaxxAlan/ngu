@@ -6,7 +6,9 @@ import json
 import logging
 from pathlib import Path
 
-from . import agent, attachments, config, store
+from . import agent, attachments, config, router, store
+from .tools.common import allow_path, allow_write_path
+from .tools.common import allow_path, allow_write_path
 
 log = logging.getLogger("local-agents.runner")
 
@@ -106,18 +108,54 @@ class Runner:
 
             paths = [Path(p) for p in json.loads(task.get("attachments") or "[]")]
             has_image = any(attachments.classify(p) == "image" for p in paths if p.exists())
-            model = task["model"]
-            if has_image and not _model_supports_vision(model):
+            model = task.get("model") or "auto"
+            if model == "auto":
+                model = router.route_model(task["prompt"], has_images=has_image)
+                store.update_task(task_id, model=model)
+                log.info("task %s auto-routed to %s", task_id, model)
+            elif has_image and not _model_supports_vision(model):
                 model = config.DEFAULT_VISION_MODEL
                 store.update_task(task_id, model=model)
                 log.info("task %s has images; switching to vision model %s", task_id, model)
 
             user_content = attachments.build_content(task["prompt"], paths)
-            system = config.system_prompt_for(task["prompt"])
-            if config.is_creative(task["prompt"]):
+            creative = config.is_creative(task["prompt"])
+            # Pre-authorize any external paths mentioned in creative tasks
+            if creative:
+                target_path, _ = config.creative_target_info(task["prompt"])
+                if target_path is not None:
+                    allow_write_path(target_path.parent)
+                # Also allow any absolute path referenced in the prompt
+                import re as _re
+                for m in _re.finditer(r"[A-Za-z]:[\\/][^\s\"'<>|]*|(?<![\\w:.\\-/])/(?:[^\s\"'<>|/]+/)*[^\s\"'<>|/]+", task["prompt"]):
+                    try:
+                        allow_write_path(m.group(0).strip().rstrip("\\/"))
+                    except Exception:  # noqa: BLE001
+                        pass
+            system = config.CREATIVE_SYSTEM_PROMPT if creative else config.AGENT_SYSTEM_PROMPT
+            if creative:
                 hint = config.creative_file_hint(task["prompt"])
                 if hint:
-                    system = f"{system}\n{hint}"
+                    # Prepend hint to user message so the model sees exact target file/length
+                    user_content_text = hint + "\n\n" + (
+                        user_content if isinstance(user_content, str)
+                        else next((p["text"] for p in user_content if isinstance(p, dict) and p.get("type") == "text"), "")
+                    )
+                    if isinstance(user_content, str):
+                        user_content = user_content_text
+                    elif isinstance(user_content, list):
+                        # Prepend to first text part
+                        patched = False
+                        new_content = []
+                        for part in user_content:
+                            if not patched and isinstance(part, dict) and part.get("type") == "text":
+                                new_content.append({"type": "text", "text": hint + "\n\n" + part.get("text", "")})
+                                patched = True
+                            else:
+                                new_content.append(part)
+                        if not patched:
+                            new_content.insert(0, {"type": "text", "text": hint})
+                        user_content = new_content
             messages = [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_content},
@@ -165,6 +203,10 @@ class Runner:
                 answer = result.get("answer") or ""
                 saved = config.finalize_creative_output(task["prompt"], answer)
                 if saved:
+                    # Clean echoed path lines / ellipsis markers from the written file
+                    target_path = config.creative_target(task["prompt"])
+                    if target_path and target_path.exists():
+                        config.clean_story_file(target_path)
                     answer = f"{answer}\n\nSaved: {saved}"
                     log.info("task %s saved creative output -> %s", task_id, saved)
                 final = store.update_task(

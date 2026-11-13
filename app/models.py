@@ -10,6 +10,7 @@ from . import config
 ALIASES: list[tuple[str, str]] = [
     ("qwen2.5-coder-1.5b", "qwen2.5-coder-1.5b"),
     ("qwen2.5-coder-3b", "qwen2.5-coder-3b"),
+    ("qwen2.5-coder-7b", "qwen2.5-coder-7b"),
     ("qwen2.5-coder-14b", "qwen2.5-coder-14b"),
     ("qwen2.5-7b-instruct", "qwen2.5-7b"),
     ("qwen2.5-vl-3b", "qwen2.5-vl-3b"),

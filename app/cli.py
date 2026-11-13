@@ -12,7 +12,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import agent, attachments, config, llm, novel, store
+from . import agent, attachments, config, llm, novel, router, store
 from .llama_runtime import runtime
 from .models import discover_models, get_model, is_vision
 
@@ -175,6 +175,8 @@ class Printer:
 # ---- shared helpers ----------------------------------------------------
 def pick_model(name: str | None) -> str:
     if name:
+        if name.lower() == "auto":
+            return "auto"
         if get_model(name) is None:
             available = ", ".join(m.name for m in discover_models()) or "(none)"
             raise SystemExit(f"unknown model '{name}'. Available: {available}")
@@ -291,9 +293,9 @@ def model_picker(current: str) -> str | None:
         err(f"no .gguf models in {config.MODELS_DIR}")
         return None
     running = set(runtime.running())
-    names = [m.name for m in models]
+    names = ["auto"] + [m.name for m in models]
     sel = names.index(current) if current in names else 0
-    rows = len(models) + 1
+    rows = len(names) + 1
 
     sys.stdout.write("\x1b[?25l")  # hide cursor
     try:
@@ -303,8 +305,19 @@ def model_picker(current: str) -> str | None:
                 f"{BOLD}Chon model{RESET} "
                 f"{DIM}(up/down de di chuyen, Enter chon, Esc huy, 1-9 chon nhanh){RESET}"
             ]
-            for i, m in enumerate(models):
+            for i, name in enumerate(names):
                 mark = ">" if i == sel else " "
+                if name == "auto":
+                    label = f"{mark} {'auto':<26}"
+                    if i == sel:
+                        label = f"{GREEN}{label}{RESET}"
+                    row = f"{label}{CYAN}router  Tự điều phối (Gà việc nhẹ/tay sai -> Ngon việc nặng){RESET}"
+                    if current == "auto":
+                        row += f" {GREEN}(current){RESET}"
+                    out.append(row)
+                    continue
+
+                m = next(item for item in models if item.name == name)
                 kind = "vision" if m.kind == "vision" else "text"
                 star = "*" if m.name in running else " "
                 size = f"{m.size / (1024 ** 3):.2f} GB"
@@ -323,21 +336,21 @@ def model_picker(current: str) -> str | None:
 
             key = _read_key()
             if key == "up":
-                sel = (sel - 1) % len(models)
+                sel = (sel - 1) % len(names)
             elif key == "down":
-                sel = (sel + 1) % len(models)
+                sel = (sel + 1) % len(names)
             elif key == "j":
-                sel = (sel + 1) % len(models)
+                sel = (sel + 1) % len(names)
             elif key == "k":
-                sel = (sel - 1) % len(models)
+                sel = (sel - 1) % len(names)
             elif key == "enter":
-                return models[sel].name
+                return names[sel]
             elif key in ("esc", "ctrl-c"):
                 return None
             elif key.isdigit():
                 idx = int(key) - 1
-                if 0 <= idx < len(models):
-                    return models[idx].name
+                if 0 <= idx < len(names):
+                    return names[idx]
     finally:
         sys.stdout.write("\x1b[?25h")  # restore cursor
         sys.stdout.flush()
@@ -481,6 +494,82 @@ async def _cmd_novel(text: str, model: str) -> None:
         print("  characters: " + ", ".join(list(project.meta.get("characters", {}))[:15]))
 
 
+# ---- web UI (lazy start) -----------------------------------------------
+async def _start_web_server(host: str, port: int) -> None:
+    """Background task: run uvicorn web server."""
+    import uvicorn
+
+    from .api import create_app
+
+    server = uvicorn.Server(uvicorn.Config(create_app(), host=host, port=port, log_level="warning"))
+    await server.serve()
+
+
+async def _cmd_web(
+    line: str,
+    existing_task: asyncio.Task | None,
+    loop: asyncio.AbstractEventLoop,
+    args: argparse.Namespace,
+) -> asyncio.Task | None:
+    """Handle /web [--port N] command: lazily start the web UI server."""
+    import webbrowser
+
+    host = config.HOST
+    port = config.PORT
+
+    # Parse optional --port override
+    parts = line.split()
+    for idx, part in enumerate(parts):
+        if part == "--port" and idx + 1 < len(parts):
+            try:
+                port = int(parts[idx + 1])
+            except ValueError:
+                err("invalid port number")
+                return existing_task
+        elif part.startswith("--port="):
+            try:
+                port = int(part.split("=", 1)[1])
+            except ValueError:
+                err("invalid port number")
+                return existing_task
+
+    if existing_task is not None and not existing_task.done():
+        url = f"http://{host}:{port}/"
+        info(f"web UI already running at {url}")
+        webbrowser.open(url)
+        return existing_task
+
+    store.init_db()
+    info(f"starting web UI at http://{host}:{port}/  (MCP: /mcp)")
+    task = loop.create_task(_start_web_server(host, port))
+    # Give it a moment to bind
+    await asyncio.sleep(1.0)
+    if task.done():
+        exc = task.exception()
+        err(f"web server failed to start: {exc}")
+        return None
+    url = f"http://{host}:{port}/"
+    info(f"web UI running: {url}")
+    webbrowser.open(url)
+    return task
+
+
+# ---- memory CLI helper -------------------------------------------------
+def _cmd_memory_cli(line: str) -> None:
+    """Handle /memory [query] – search or list persistent memory from CLI."""
+    from .tools import memory as mem_tools
+
+    rest = line[len("/memory"):].strip()
+    try:
+        if rest:
+            result = mem_tools.memory_search(rest, limit=10)
+        else:
+            result = mem_tools.memory_list(limit=30)
+        print(result)
+    except Exception as exc:  # noqa: BLE001
+        err(f"memory error: {exc}")
+
+
 # ---- run ---------------------------------------------------------------
 async def cmd_run(args: argparse.Namespace) -> int:
     store.init_db()
@@ -491,7 +580,13 @@ async def cmd_run(args: argparse.Namespace) -> int:
     if not prompt:
         err("empty prompt")
         return 2
-    model = maybe_vision_model(pick_model(args.model), paths)
+    chosen_model = pick_model(args.model)
+    if chosen_model == "auto":
+        routed = router.route_model(prompt, has_images=bool(paths))
+        model = maybe_vision_model(routed, paths)
+        info(f"[auto] Điều phối -> {model}")
+    else:
+        model = maybe_vision_model(chosen_model, paths)
     agent_name = args.agent or config.DEFAULT_AGENT
 
     task = store.create_task(
@@ -586,6 +681,7 @@ CHAT_HELP = f"""{BOLD}commands{RESET}
   /model [name]     mo bang chon model (up/down + Enter) hoac doi model
   /models           list local models
   /auto [on|off]    toggle auto-approve/sandbox-off (allow tools outside workspace)
+  /web [--port N]   bat web UI trong browser (lazy start - chi chay khi can)
   /write <prompt>   pipeline viet chuong moi (plan -> write -> review -> retry)
   /write --plan     chi lap ke hoach chuong moi
   /write --review   chi review chuong vua viet
@@ -598,7 +694,8 @@ CHAT_HELP = f"""{BOLD}commands{RESET}
   /files            list queued attachments
   /clear-files      drop queued attachments
   /reset            clear conversation history
-  /status           llama.cpp runtime status
+  /status           llama.cpp + memory status
+  /memory [query]   search persistent memory (or list all when no query)
   /help             this help
   /exit, /quit      leave
 
@@ -621,7 +718,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    print(f"{BOLD}{CYAN}local-agents{RESET} {DIM}| model {model} | llama.cpp{RESET}")
+    print(f"{BOLD}{CYAN}ngu{RESET} {DIM}| model {model} | llama.cpp{RESET}")
     info(f"workspace: {config.WORKSPACE_DIR}")
     if pending:
         info(f"attached: {', '.join(p.name for p in pending)}")
@@ -633,6 +730,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
     print()
 
     writing = False
+    _web_server: asyncio.Task | None = None
     try:
         while True:
             _auto_restore = None
@@ -663,6 +761,16 @@ def cmd_chat(args: argparse.Namespace) -> int:
                 continue
             if line == "/status":
                 loop.run_until_complete(status_text())
+                continue
+            # /web [--port N] – lazy-start web UI
+            if line == "/web" or line.startswith("/web "):
+                _web_server = loop.run_until_complete(
+                    _cmd_web(line, _web_server, loop, args)
+                )
+                continue
+            # /memory [query] – search or list persistent memory
+            if line == "/memory" or line.startswith("/memory "):
+                _cmd_memory_cli(line)
                 continue
             if line.startswith("/auto"):
                 parts = line.split(maxsplit=1)
@@ -763,7 +871,12 @@ def cmd_chat(args: argparse.Namespace) -> int:
             if not text:
                 continue
 
-            turn_model = maybe_vision_model(model, paths)
+            if model == "auto":
+                routed = router.route_model(text, has_images=bool(paths))
+                turn_model = maybe_vision_model(routed, paths)
+                info(f"[auto] Điều phối -> {turn_model}")
+            else:
+                turn_model = maybe_vision_model(model, paths)
             user_content = attachments.build_content(text, paths)
             messages.append({"role": "user", "content": user_content})
             messages[:] = trim_messages(messages)
@@ -820,6 +933,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
             writing = False
             print()
     finally:
+        if _web_server is not None and not _web_server.done():
+            _web_server.cancel()
         loop.run_until_complete(runtime.stop_all())
         loop.close()
     return 0
@@ -1017,17 +1132,17 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--max-steps", type=int, default=None, help="tool loop step limit")
 
     p = argparse.ArgumentParser(
-        prog="la",
-        description="local-agents: CLI coding agent on llama.cpp",
+        prog="ngu",
+        description="ngu: local AI agent chạy trên llama.cpp",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            '  la run "write a fizzbuzz.py and test it"\n'
-            '  la run "what is in this image?" photo.png\n'
-            "  la chat\n"
-            "  la chat notes.md diagram.png\n"
-            "  la models\n"
-            "  la serve\n"
+            '  ngu run "viet fizzbuzz.py va test"\n'
+            '  ngu run "anh nay la gi?" photo.png\n'
+            "  ngu\n"
+            "  ngu chat notes.md diagram.png\n"
+            "  ngu models\n"
+            "  ngu serve\n"
         ),
         parents=[common],
     )
@@ -1080,7 +1195,7 @@ def main(argv: list[str] | None = None) -> int:
     _enable_ansi()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     argv = list(sys.argv[1:] if argv is None else argv)
-    # `la "do something"` -> implicit run; dropped files alone -> chat with attachments
+    # `ngu "do something"` -> implicit run; dropped files alone -> chat with attachments
     if argv and not argv[0].startswith("-") and argv[0] not in COMMANDS:
         all_files = all(
             Path(a.strip('"')).exists() and Path(a.strip('"')).is_file() for a in argv

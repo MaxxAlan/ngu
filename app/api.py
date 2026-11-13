@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from . import attachments, config, llm, store
 from .llama_runtime import runtime
 from .mcp_server import build_mcp
+from .models import discover_models, get_model
+from .router import get_available_roles
 from .runner import runner, running
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -26,6 +28,12 @@ class TaskIn(BaseModel):
     model: str | None = None
     auto_run: bool = True
     attachments: list[str] = Field(default_factory=list)
+
+
+class ChatIn(BaseModel):
+    messages: list[dict]
+    model: str | None = None
+    stream: bool = True
 
 
 def create_app() -> FastAPI:

@@ -1,124 +1,200 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>local-agents · task board</title>
+  <title>local-agents · chat</title>
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <!-- TOP BAR -->
   <header class="topbar">
-    <div class="brand">
-      <span class="logo">◉</span>
-      <div>
-        <h1>local-agents</h1>
-        <p class="sub">coding agent chạy trên llama.cpp · CLI-first</p>
+    <div class="topbar-left">
+      <button class="sidebar-toggle" id="sidebarToggle" title="Toggle sidebar">☰</button>
+      <div class="brand">
+        <span class="logo">◉</span>
+        <div>
+          <h1>local-agents</h1>
+          <p class="sub">llama.cpp · CLI-first coding agent</p>
+        </div>
       </div>
+    </div>
+    <div class="topbar-center" id="chatTitle">
+      <span class="chat-title-text">New Chat</span>
     </div>
     <div class="topbar-right">
       <div class="status" id="status">
         <span class="dot" id="statusDot"></span>
-        <span id="statusText">đang kiểm tra…</span>
+        <span id="statusText">checking…</span>
       </div>
-      <a class="mcp-url" href="/api/health" target="_blank" rel="noreferrer">/mcp</a>
+      <button class="right-panel-toggle" id="rightPanelToggle" title="Toggle config panel">⚙</button>
     </div>
   </header>
 
-  <main class="layout">
-    <aside class="panel">
-      <h2>Giao task</h2>
-      <form id="taskForm">
-        <label>
-          <span>Tiêu đề</span>
-          <input id="title" name="title" placeholder="tự sinh từ prompt nếu trống" autocomplete="off" />
-        </label>
-        <label>
-          <span>Prompt</span>
-          <textarea id="prompt" name="prompt" rows="8" required
-            placeholder="Viết script Python đọc CSV sales.csv, in top 5 sản phẩm theo doanh thu…"></textarea>
-        </label>
+  <!-- MAIN 3-COLUMN LAYOUT -->
+  <div class="app-layout">
 
-        <div class="dropzone" id="dropzone" tabindex="0" role="button"
-          aria-label="Kéo file hoặc ảnh vào đây, hoặc bấm để chọn">
+    <!-- LEFT SIDEBAR: Chat History -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <button class="btn-new-chat primary-sm" id="newChatBtn">＋ New Chat</button>
+      </div>
+      <div class="filter-chips" id="historyFilters">
+        <button class="chip active" data-status="">all</button>
+        <button class="chip" data-status="running">running</button>
+        <button class="chip" data-status="done">done</button>
+        <button class="chip" data-status="failed">failed</button>
+      </div>
+      <div class="history-list" id="historyList">
+        <p class="empty-history">No tasks yet</p>
+      </div>
+    </aside>
+
+    <!-- CENTER: Chat / Task View -->
+    <main class="chat-area" id="chatArea">
+      <!-- Message thread -->
+      <div class="messages" id="messages">
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-logo">◉</div>
+          <h2>local-agents</h2>
+          <p>Your local AI coding assistant running on llama.cpp.<br>Start by typing a task below.</p>
+          <div class="quick-starts">
+            <button class="quick-btn" data-prompt="Read the file structure of the current project and summarize it">📁 Inspect project</button>
+            <button class="quick-btn" data-prompt="Write a Python script to process a CSV file and show statistics">📊 Analyze CSV</button>
+            <button class="quick-btn" data-prompt="Debug this code and explain what's wrong">🐛 Debug code</button>
+            <button class="quick-btn" data-prompt="Explain the current codebase architecture in detail">🏗 Explain architecture</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="dropzone-compact" id="dropzone" tabindex="0" role="button"
+          aria-label="Drop files here or click to select">
           <input type="file" id="fileInput" multiple hidden />
-          <p><strong>Kéo file / ảnh vào đây</strong> hoặc <span class="link">chọn file</span></p>
-          <p class="hint">ảnh → vision model · text → gửi kèm prompt · Ctrl+V để dán ảnh</p>
+          <span class="dz-icon">📎</span>
+          <span class="dz-text">Drop files / images or <span class="link">click to attach</span></span>
+          <span class="dz-hint">· Ctrl+V to paste screenshot · images → vision model</span>
         </div>
         <div class="chips" id="attachments" hidden></div>
 
-        <div class="row">
-          <label>
-            <span>Agent</span>
-            <input id="agent" name="agent" placeholder="local-agent" autocomplete="off" />
-          </label>
-          <label>
-            <div class="label-row">
-              <span>Model</span>
-              <button type="button" id="reloadModelsBtn" class="link-btn" title="Quét lại models">🔄 quét lại</button>
-            </div>
-            <select id="model" name="model"></select>
-          </label>
+        <div class="input-row">
+          <div class="textarea-wrap">
+            <textarea id="prompt" rows="3" placeholder="Describe your task… (Ctrl+Enter to send, Escape to clear)"
+              autocomplete="off" spellcheck="true"></textarea>
+          </div>
+          <div class="input-controls">
+            <select id="modelSelect" title="Model"></select>
+            <span class="model-badge" id="modelBadge">🔀AUTO</span>
+            <button class="btn-send primary" id="submitBtn" title="Send (Ctrl+Enter)">
+              <span id="submitLabel">Send</span>
+            </button>
+          </div>
         </div>
-        <label class="check">
-          <input id="autoRun" name="autoRun" type="checkbox" checked />
-          <span>chạy ngay</span>
-        </label>
-        <button type="submit" class="primary" id="submitBtn">Giao task</button>
         <p class="form-error" id="formError" hidden></p>
-      </form>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL: Config & Status -->
+    <aside class="right-panel" id="rightPanel">
+      <div class="rp-section">
+        <h3 class="rp-title">Model</h3>
+        <select id="rpModelSelect" class="rp-select"></select>
+        <div class="model-badge-row">
+          <span class="model-badge large" id="rpModelBadge">🔀 AUTO</span>
+          <span class="model-role" id="rpModelRole">auto-routing</span>
+        </div>
+      </div>
+
+      <div class="rp-section">
+        <h3 class="rp-title">System Status</h3>
+        <div class="status-grid">
+          <div class="status-row">
+            <span class="status-label">llama.cpp</span>
+            <span class="status-val" id="rpLlamaStatus">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Device</span>
+            <span class="status-val" id="rpDevice">—</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Running</span>
+            <span class="status-val" id="rpRunning">0</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Queued</span>
+            <span class="status-val" id="rpQueued">0</span>
+          </div>
+        </div>
+        <div class="vram-bar-wrap" id="vramWrap" hidden>
+          <div class="vram-label">VRAM <span id="vramPct">0%</span></div>
+          <div class="vram-bar"><div class="vram-fill" id="vramFill"></div></div>
+        </div>
+      </div>
+
+      <div class="rp-section">
+        <h3 class="rp-title">Active Models</h3>
+        <div class="active-models" id="activeModels">
+          <p class="rp-empty">No models loaded</p>
+        </div>
+      </div>
+
+      <div class="rp-section">
+        <h3 class="rp-title">Quick Tools</h3>
+        <div class="quick-tools">
+          <button class="qtool-btn" data-prompt="List all files in the current directory recursively with sizes">📁 Inspect folder</button>
+          <button class="qtool-btn" data-prompt="Read the Excel/CSV files in the project and show a summary">📊 Read Excel/CSV</button>
+          <button class="qtool-btn" data-prompt="Run the test suite and show results">🧪 Run tests</button>
+          <button class="qtool-btn" data-prompt="Check for any syntax errors or issues in the codebase">🔍 Lint codebase</button>
+          <button class="qtool-btn" data-prompt="Generate documentation for the main functions and classes">📝 Gen docs</button>
+          <button class="qtool-btn" data-prompt="Optimize the most performance-critical parts of the code">⚡ Optimize code</button>
+        </div>
+      </div>
+
+      <div class="rp-section">
+        <h3 class="rp-title">Buffer / Cache</h3>
+        <div class="cache-stats">
+          <div class="status-row">
+            <span class="status-label">Cache hits</span>
+            <span class="status-val accent" id="cacheHits">0</span>
+          </div>
+          <div class="status-row">
+            <span class="status-label">Tasks total</span>
+            <span class="status-val" id="totalTasks">0</span>
+          </div>
+        </div>
+        <a class="mcp-link" href="/api/health" target="_blank" rel="noreferrer">/api/health ↗</a>
+      </div>
+
+      <div class="rp-section">
+        <h3 class="rp-title">Task Options</h3>
+        <label class="rp-label">
+          <span>Title (auto-generated if blank)</span>
+          <input id="taskTitle" type="text" placeholder="e.g. Debug auth module" autocomplete="off" />
+        </label>
+        <label class="rp-label">
+          <span>Agent</span>
+          <input id="agentInput" type="text" placeholder="local-agent" autocomplete="off" />
+        </label>
+        <label class="check rp-check">
+          <input id="autoRun" type="checkbox" checked />
+          <span>Run immediately</span>
+        </label>
+        <button class="reload-btn" id="reloadModelsBtn">🔄 Rescan models</button>
+      </div>
     </aside>
+  </div>
 
-    <section class="board">
-      <div class="board-head">
-        <h2>Task</h2>
-        <div class="filters" id="filters">
-          <button class="chip active" data-status="">tất cả</button>
-          <button class="chip" data-status="queued">queued</button>
-          <button class="chip" data-status="running">running</button>
-          <button class="chip" data-status="done">done</button>
-          <button class="chip" data-status="failed">failed</button>
-          <button class="chip" data-status="draft">draft</button>
-        </div>
+  <!-- TEMPLATES -->
+  <template id="historyItemTpl">
+    <div class="history-item">
+      <span class="hi-pill"></span>
+      <div class="hi-body">
+        <span class="hi-title"></span>
+        <span class="hi-time"></span>
       </div>
-      <div class="tasks" id="tasks">
-        <p class="empty" id="empty">chưa có task nào</p>
-      </div>
-    </section>
-  </main>
-
-  <template id="taskTpl">
-    <article class="task">
-      <div class="task-head">
-        <div class="task-title-wrap">
-          <span class="pill"></span>
-          <h3 class="task-title"></h3>
-        </div>
-        <div class="task-actions">
-          <button class="icon run" title="chạy lại">▶</button>
-          <button class="icon cancel" title="huỷ">■</button>
-          <button class="icon copy" title="copy kết quả">⧉</button>
-          <button class="icon delete" title="xoá">✕</button>
-        </div>
-      </div>
-      <div class="meta">
-        <span class="meta-agent"></span>
-        <span class="meta-model"></span>
-        <span class="meta-time"></span>
-        <span class="meta-id"></span>
-      </div>
-      <div class="attachments" hidden></div>
-      <pre class="task-prompt"></pre>
-      <details class="steps" hidden>
-        <summary>agent steps (<span class="step-count">0</span>)</summary>
-        <div class="step-list"></div>
-      </details>
-      <div class="live" hidden>
-        <span class="live-label">streaming…</span>
-        <pre class="live-text"></pre>
-      </div>
-      <pre class="task-result" hidden></pre>
-      <p class="task-error" hidden></p>
-    </article>
+      <button class="hi-delete" title="Delete">✕</button>
+    </div>
   </template>
 
   <script src="/static/app.js"></script>

@@ -1,13 +1,14 @@
-"""Modular toolset for local-agents (inspired by opencode-style separation).
+"""Modular toolset for local-agents.
 
-Public API kept compatible with legacy `app.tools` module:
+Public API:
 - TOOLS, to_openai_tools(), execute(), set_workspace(), resolve_path, WORKSPACE
 - ToolError, PermissionDenied
-- cac ham tien ich: read_file/write_file/append_file/edit_file/list_dir/
+- fs tools: read_file/write_file/append_file/edit_file/list_dir/
   list_tree/glob_files/search_files/make_dir/remove_path/move_path/run_shell
+- memory tools: memory_save/memory_search/memory_list/memory_delete
 """
 
-from . import fs, search, shell
+from . import fs, memory, office, search, seb, shell
 from .common import WORKSPACE, PermissionDenied, ToolError, resolve_path, set_workspace
 from .fs import (
     append_file,
@@ -21,8 +22,11 @@ from .fs import (
     remove_path,
     write_file,
 )
+from .memory import memory_delete, memory_list, memory_save, memory_search
+from .office import inspect_data, read_docx, read_excel, read_pdf
 from .registry import TOOLS, execute, to_openai_tools
 from .search import search_files
+from .seb import analyze_seb, inspect_project
 from .shell import run_shell
 
 __all__ = [
@@ -46,7 +50,20 @@ __all__ = [
     "remove_path",
     "move_path",
     "run_shell",
+    "memory_save",
+    "memory_search",
+    "memory_list",
+    "memory_delete",
+    "read_excel",
+    "read_docx",
+    "read_pdf",
+    "inspect_data",
+    "analyze_seb",
+    "inspect_project",
     "fs",
     "search",
     "shell",
+    "memory",
+    "office",
+    "seb",
 ]

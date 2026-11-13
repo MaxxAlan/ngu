@@ -128,10 +128,14 @@ class LlamaRuntime:
                 "--port", str(port),
                 "-c", str(ctx),
                 "-ngl", str(ngl),
-                "--jinja",
             ]
+            # --jinja chỉ cần cho vision models (parse image tokens).
+            # Text models KHÔNG dùng --jinja: Qwen2.5-Coder với --jinja sẽ
+            # tự gọi tool (get_datetime, v.v.) cho cả chit-chat vì chat
+            # template của nó inject tool-calling context vào mọi request.
             if model.mmproj:
                 args += ["--mmproj", str(model.mmproj)]
+                args += ["--jinja"]
             if device:
                 args += ["--device", device]
             cache_type = (config.LLAMA_CACHE_TYPE or "").strip()
