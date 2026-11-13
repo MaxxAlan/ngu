@@ -1,0 +1,74 @@
+t can con agents nay co the dung dc voi tat ca cac file van phong, tat ca cac hinh anh,... co the dung tool nay cua t vua build de tich hop vao agents https://github.com/MaxxAlan/archive2md.git
+con phan viet truyen thi agents van rat nguuuu t can no sinh ra cac thu nhu: phan canh, boi canh, nhan vat, tuyen nhan vat, y tuong (AI tu build tiep theo),.... (hay adaptive va truc quan)
+tham khao tat ca cac agents local + agents viet truyen de upgrade repo cho t
+
+
+
+Microsoft Windows [Version 10.0.26200.9457]
+(c) Microsoft Corporation. All rights reserved.
+
+D:\project\local-agents>ngu
+ngu | model qwen2.5-coder-3b | llama.cpp
+workspace: D:\project\local-agents
+auto mode: OFF (ngoài workspace sẽ hỏi quyền nếu LA_ASK_PERMISSION=1, hoặc dùng /auto)
+type /help for commands, /exit to leave
+
+you > hello
+agent >
+INFO local-agents.llama: llama device: NVIDIA GeForce GTX 1650
+INFO local-agents.llama: starting llama-server for qwen2.5-coder-3b (ngl=999 ctx=32768) on port 59153
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+Xin chào! Tôi có thể giúp gì cho bạn hôm nay?
+
+1 step(s) | 10.2s
+
+you > m co the doc cac file van phong ko
+agent >
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+Dạ, tôi có thể giúp bạn đọc và xem các tệp văn phòng. Bạn muốn đọc tệp nào?
+
+1 step(s) | 15.1s
+
+you > xem thg quyet le diem no ntn: "C:\Users\HoangManh\Downloads\Bang-diem-SE2044.xlsx"
+agent >
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+","arguments":{"path":"Bang-diem-SE2044.xlsx","sheet_name":"Sheet1","max_rows":100,"max_cols":30}}
+```
+WARNING local-agents.agent: tool read_excel failed: file not found: D:\project\local-agents\Bang-diem-SE2044.xlsx
+[tool] read_excel {"path": "Bang-diem-SE2044.xlsx", "sheet_name": "Sheet1", "max_rows": 100, "max_cols": 30}
+file not found: D:\project\local-agents\Bang-diem-SE2044.xlsx
+
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+","arguments":{"path":"."}}
+```
+[tool] list_dir {"path": "."}
+D:\project\local-agents (31 entries)
+dir  .git
+dir  .github
+dir  .pytest_cache
+dir  .ruff_cache
+dir  .venv
+... (26 more lines)
+
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+","arguments":{"path":"D:\\project\\local-agents\\Bang-diem-SE2044.xlsx","sheet_name":"Sheet1","max_rows":100,"max_cols":30}}
+```
+WARNING local-agents.agent: tool read_excel failed: file not found: D:\project\local-agents\Bang-diem-SE2044.xlsx
+[tool] read_excel {"path": "D:\\project\\local-agents\\Bang-diem-SE2044.xlsx", "sheet_name": "Sheet1", "max_rows": 100, "max_cols": 30}
+file not found: D:\project\local-agents\Bang-diem-SE2044.xlsx
+
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+","arguments":{"path":"."}}
+```
+WARNING local-agents.agent: repeated identical tool call blocked: list_dir {"path": "."}
+[tool] list_dir {"path": "."}
+repeated identical tool call blocked: list_dir {"path": "."}
+
+INFO httpx: HTTP Request: POST http://127.0.0.1:59153/v1/chat/completions "HTTP/1.1 200 OK"
+```json
+{"name":"list_dir","arguments":{"path":"."}}
+```
+
+4 step(s) | 30.1s
+
+you >
