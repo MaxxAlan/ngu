@@ -112,6 +112,13 @@ jobs:
             type=raw,value=latest
             type=ref,event=branch
             type=sha
+          labels: |
+            org.opencontainers.image.title=ngu
+            org.opencontainers.image.description=Local coding agent on llama.cpp (CLI + web board + MCP)
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=MaxxAlan
       - uses: docker/build-push-action@v6
         with:
           context: .
