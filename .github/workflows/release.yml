@@ -31,7 +31,7 @@ jobs:
     name: build release assets
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Tai dong goi llama.cpp (windows) cho tung bien do ho tro
         run: |
