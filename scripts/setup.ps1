@@ -81,12 +81,15 @@ function Invoke-Native {
         Chay executable, tra ve ExitCode / Output / Error. Co timeout that.
         Dung System.Diagnostics.Process de lay ExitCode that (Start-Process -PassThru tra null).
         -Live: output cua lenh in thang ra man hinh (dung cho curl co progress bar).
+        LUON chay voi working directory = thu muc project, de lenh (uv, python -m app.cli)
+        khong tro nham sang project khac.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
         [string[]]$ArgumentList = @(),
         [int]$TimeoutSec = 300,
-        [switch]$Live
+        [switch]$Live,
+        [string]$WorkingDirectory = $Root
     )
     $out = ''
     $err = ''
@@ -98,6 +101,9 @@ function Invoke-Native {
         $psi.Arguments = (($ArgumentList | ForEach-Object { Quote-Arg $_ }) -join ' ')
         $psi.UseShellExecute = $false
         $psi.CreateNoWindow = $true
+        if ($WorkingDirectory -and (Test-Path $WorkingDirectory)) {
+            $psi.WorkingDirectory = $WorkingDirectory
+        }
         if (-not $Live) {
             $psi.RedirectStandardOutput = $true
             $psi.RedirectStandardError = $true
@@ -261,10 +267,11 @@ function Find-BasePython {
     $found = New-Object System.Collections.ArrayList
     if ($UvExe) {
         foreach ($v in @('3.11', '3.12', '3.13', '3.14')) {
-            $r = Invoke-Native -FilePath $UvExe -ArgumentList @('python', 'find', $v) -TimeoutSec 60
+            # --no-project: bo qua .venv cua project hien tai (tranh tao venv long nhau)
+            $r = Invoke-Native -FilePath $UvExe -ArgumentList @('python', 'find', '--no-project', $v) -TimeoutSec 60
             if ($r.ExitCode -eq 0) {
                 $p = ((Flat-Text $r.Output) -replace '\s+', ' ').Trim()
-                if ($p -and (Test-Path $p)) { [void]$found.Add($p) }
+                if ($p -and (Test-Path $p) -and ($p -notmatch '\\\.venv\\')) { [void]$found.Add($p) }
             }
         }
     }
@@ -273,14 +280,16 @@ function Find-BasePython {
             $r = Invoke-Native -FilePath 'py' -ArgumentList @("-$v", '-c', 'import sys;print(sys.executable)') -TimeoutSec 60
             if ($r.ExitCode -eq 0) {
                 $p = ((Flat-Text $r.Output) -replace '\s+', ' ').Trim()
-                if ($p -and (Test-Path $p)) { [void]$found.Add($p) }
+                if ($p -and (Test-Path $p) -and ($p -notmatch '\\\.venv\\')) { [void]$found.Add($p) }
             }
         }
     }
     foreach ($c in @('python', 'python3')) {
         if (Test-Command $c) {
             $p = (Get-Command $c).Source
-            if ($p -and (Get-PythonVersion -Exe $p) -ge 311) { [void]$found.Add($p) }
+            if ($p -and (Get-PythonVersion -Exe $p) -ge 311 -and ($p -notmatch '\\\.venv\\')) {
+                [void]$found.Add($p)
+            }
         }
     }
     return $found
@@ -482,8 +491,43 @@ function Get-LlamaDevices {
     return $devs
 }
 
+function Test-ReleaseAsset {
+    <# Kiem tra 1 URL co ton tai khong (HEAD, khong tai ve) #>
+    param([string]$Url)
+    $r = Invoke-Native -FilePath 'curl.exe' -ArgumentList @('-sIL', '-o', 'NUL', '-w', '%{http_code}', $Url) -TimeoutSec 60
+    $code = ((Flat-Text $r.Output) -replace '[^0-9]', '')
+    return ($code -match '200$')
+}
+
 function Install-LlamaRuntime {
     param([string]$Variant)
+
+    # 1) uu tien ban da build san cua repo nay (release asset) - nhanh, khong can API
+    $relUrl = 'https://github.com/MaxxAlan/ngu/releases/latest/download/llama-' + $Variant + '.zip'
+    Write-Info ('tai ban da build san: ' + $relUrl)
+    if (Test-ReleaseAsset -Url $relUrl) {
+        $zipPath = Join-Path $TmpDir ('llama-' + $Variant + '.zip')
+        $r = Invoke-Native -FilePath 'curl.exe' -ArgumentList @(
+            '-L', '--fail', '--retry', '3', '--retry-delay', '5', '-C', '-', '-sS',
+            '-o', $zipPath, $relUrl) -TimeoutSec 3600
+        if ($r.ExitCode -eq 0 -and (Test-Path $zipPath)) {
+            try {
+                if (Test-Path $LlamaDir) { Remove-Item -LiteralPath $LlamaDir -Recurse -Force -ErrorAction SilentlyContinue }
+                New-Item -ItemType Directory -Force -Path $LlamaDir | Out-Null
+                Expand-Archive -LiteralPath $zipPath -DestinationPath $LlamaDir -Force
+                if (Test-Path $LlamaExe) {
+                    Write-Ok ('runtime (release asset): ' + $LlamaExe)
+                    return $true
+                }
+            } catch {
+                Write-Warn ('giai nen that bai: ' + $_.Exception.Message)
+            }
+        } else {
+            Write-Warn ('khong tai duoc release asset, dung ban goc cua llama.cpp')
+        }
+    }
+
+    # 2) fallback: tai truc tiep tu release cua llama.cpp
     Write-Info ('tai llama.cpp ban ' + $Variant + ' tu github...')
     $releases = $null
     try {

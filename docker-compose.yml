@@ -1,13 +1,12 @@
 name: local-agents
 
+# Image da duoc CI build san va push len GHCR - user KHONG can build gi.
+# Muon build ban rieng: docker compose --profile build build
+
 services:
   ngu:
-    build:
-      context: .
-      args:
-        # cpu | vulkan | cuda-12.8
-        LLAMA_BACKEND: ${LLAMA_BACKEND:-cpu}
     image: ghcr.io/maxxalan/ngu:latest
+    pull_policy: always
     container_name: ngu
     ports:
       - "${LA_PORT:-8765}:8765"
@@ -28,15 +27,26 @@ services:
   # tai model vao volume (chay 1 lan):
   #   docker compose --profile models run --rm fetch-models
   fetch-models:
-    build:
-      context: .
     image: ghcr.io/maxxalan/ngu:latest
+    pull_policy: always
     profiles: ["models"]
     command: ["python", "scripts/fetch_models.py", "--set", "all"]
     volumes:
       - ngu-models:/app/models
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
+
+  # build image rieng tren may (mac dinh KH dung):
+  #   docker compose --profile build build
+  build-image:
+    build:
+      context: .
+      args:
+        # cpu | vulkan | cuda-12.8
+        LLAMA_BACKEND: ${LLAMA_BACKEND:-cpu}
+    image: ghcr.io/maxxalan/ngu:local
+    profiles: ["build"]
+    command: ["python", "-m", "app.cli", "status"]
 
 volumes:
   ngu-models:

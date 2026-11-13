@@ -13,6 +13,9 @@ permissions:
   contents: write
   packages: write
 
+env:
+  LLAMA_TAG: b12329
+
 jobs:
   docker:
     name: build + push image
@@ -50,27 +53,76 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # ------------------------------------------------------------------
+  # Dong goi san cho user: bo llama.cpp runtime (da build) + bundle portable
+  # ------------------------------------------------------------------
   package:
-    name: dong goi source zip
+    name: build release assets
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Tao zip (khong kem model / venv / runtime)
+
+      - name: Tai dong goi llama.cpp (windows) cho tung bien do ho tro
+        run: |
+          set -eux
+          mkdir -p dist work
+          for v in cpu vulkan cuda-12.4 cuda-13.5; do
+            case "$v" in
+              cpu)        asset="llama-${LLAMA_TAG}-bin-win-cpu-x64.zip" ;;
+              vulkan)     asset="llama-${LLAMA_TAG}-bin-win-vulkan-x64.zip" ;;
+              cuda-12.4)  asset="llama-${LLAMA_TAG}-bin-win-cuda-12.4-x64.zip" ;;
+              cuda-13.5)  asset="llama-${LLAMA_TAG}-bin-win-cuda-13.5-x64.zip" ;;
+            esac
+            echo "--- $v <- $asset"
+            curl -fsSL -o "work/$v.zip" \
+              "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${asset}"
+            mkdir -p "work/$v"
+            unzip -q -o "work/$v.zip" -d "work/$v"
+            # them runtime CUDA (cublas/cudart) cho ban cuda
+            case "$v" in
+              cuda-*)
+                curl -fsSL -o "work/$v-cudart.zip" \
+                  "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/cudart-llama-${LLAMA_TAG}-bin-win-${v}-x64.zip"
+                unzip -q -o "work/$v-cudart.zip" -d "work/$v-cudart"
+                cp -f work/$v-cudart/*.{dll,dll} work/$v/ 2>/dev/null || true
+              ;;
+            esac
+            # flatten: chi lay thu muc chua llama-server.exe
+            srcdir=$(dirname "$(find "work/$v" -name llama-server.exe | head -1)")
+            (cd "$srcdir" && zip -r -X "$GITHUB_WORKSPACE/dist/llama-$v.zip" .)
+            echo "dist/llama-$v.zip: $(du -h "dist/llama-$v.zip" | cut -f1)"
+          done
+
+      - name: Tao bundle portable (source + runtime CPU)
+        run: |
+          set -eux
+          rm -rf work/portable
+          mkdir -p work/portable
+          cp -r app static scripts k8s tests .config .github \
+                Dockerfile docker-compose.yml pyproject.toml uv.lock \
+                setup.bat ngu.cmd README.md SETUP.md LICENSE .gitignore .gitattributes \
+                work/portable/
+          mkdir -p work/portable/runtime/llama.cpp
+          srcdir=$(dirname "$(find work/cpu -name llama-server.exe | head -1)")
+          cp -f "$srcdir"/* work/portable/runtime/llama.cpp/
+          (cd work/portable && zip -r -X "$GITHUB_WORKSPACE/dist/ngu-portable-${{ github.ref_name }}.zip" .)
+          ls -lh dist/
+
+      - name: Tao source zip
         run: |
           set -eux
           mkdir -p dist
-          zip -r "dist/ngu-${{ github.ref_name }}.zip" \
-            app static scripts tests k8s \
-            .config .github \
+          zip -r -X "dist/ngu-${{ github.ref_name }}-src.zip" \
+            app static scripts tests k8s .config .github \
             Dockerfile docker-compose.yml pyproject.toml uv.lock \
-            setup.bat setup-report.txt README.md LICENSE \
-            -x "*.pyc" "__pycache__/*" ".git/*"
+            setup.bat ngu.cmd README.md SETUP.md LICENSE .gitignore .gitattributes \
+            -x "*.pyc" "__pycache__/*"
           cd dist
-          sha256sum "ngu-${{ github.ref_name }}.zip" > "ngu-${{ github.ref_name }}.zip.sha256"
-          cat "ngu-${{ github.ref_name }}.zip.sha256"
+          sha256sum *.zip > SHA256SUMS.txt
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ngu-package
+          name: ngu-release-assets
           path: dist/*
 
   release:
@@ -80,16 +132,46 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ngu-package
+          name: ngu-release-assets
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
             ## local-agents ${{ github.ref_name }}
 
-            - Docker: `docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}`
-            - `docker compose up -d`
+            ### Cai dat nhanh (Windows)
+
+            ```powershell
+            git clone https://github.com/MaxxAlan/ngu.git
+            cd ngu
+            setup.bat          # Run as Administrator
+            ```
+
+            Hoac tai bundle portable (source + llama.cpp CPU da build san):
+
+            ```
+            https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-portable-${{ github.ref_name }}.zip
+            ```
+
+            ### Docker
+
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            docker compose up -d
+            ```
+
             - Web board: http://127.0.0.1:8765/
             - MCP: http://127.0.0.1:8765/mcp
+
+            ### Ban llama.cpp (setup.bat tu tai, ban nao cung dung)
+
+            | file | dung cho |
+            | --- | --- |
+            | `llama-cpu.zip` | may khong co GPU |
+            | `llama-vulkan.zip` | AMD / Intel |
+            | `llama-cuda-12.4.zip` | NVIDIA driver >= 550 |
+            | `llama-cuda-13.5.zip` | NVIDIA driver >= 580 |

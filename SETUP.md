@@ -18,6 +18,8 @@ Dung lượng: **≥ 25 GB trống** (bộ model đầy đủ ~19 GB + runtime ~
 
 ## 1. Cách 1 — Windows (khuyến nghị)
 
+> **Không build gì ở máy bạn.** Clone về → bấm `setup.bat` → xong.
+
 ### 1.1. Clone
 
 ```powershell
@@ -29,6 +31,10 @@ cd ngu
 > Nếu bạn đã có sẵn thư mục project (copy từ máy cũ) thì **không cần clone**, chỉ cần
 > copy `scripts/setup.ps1`, `scripts/setup.bat` và `scripts/models.json` từ repo vào là
 > được.
+
+> **Hoặc tải bản portable** (đã gói sẵn source + llama.cpp CPU build sẵn):
+> <https://github.com/MaxxAlan/ngu/releases/latest> → `ngu-portable-vX.Y.Z.zip` → giải
+> nén → chạy `setup.bat` trong thư mục đó.
 
 ### 1.2. Chạy setup (Run as Administrator)
 
@@ -44,12 +50,14 @@ Script làm 9 việc, in ra từng bước:
 | 1 | Python toolchain | Cài `uv` (winget / installer chính thức) + python 3.11 nếu thiếu |
 | 2 | Virtualenv | Tạo lại `.venv` nếu hỏng / copy từ máy khác |
 | 3 | Thư viện Python | `uv sync --frozen` theo `uv.lock` (fastapi, uvicorn, httpx, mcp) |
-| 4 | llama.cpp | Tải bản build khớp GPU: `cuda-12.4` / `cuda-13.5` / `vulkan` / `cpu` |
+| 4 | llama.cpp | Tải **bản đã build sẵn** từ Release của repo (`llama-cpu.zip` / `llama-vulkan.zip` / `llama-cuda-12.4.zip` / `llama-cuda-13.5.zip`), tự chọn theo GPU |
 | 5 | Model gguf | Tải bộ model uncensored theo `scripts/models.json` (bỏ qua file đã có) |
 | 6 | Lệnh global | Tạo `ngu.cmd` + thêm thư mục project vào **User PATH** |
 | 7 | MCP | Đăng ký `local-agents` vào `~/.config/opencode/opencode.json` |
 | 8 | Kiểm tra | `ngu models`, `ngu status`, smoke test (load model + 1 câu trả lời) |
 | 9 | Báo cáo | `setup-report.txt` + `data/setup.log` |
+
+> Bước 4/5 là **duy nhất cần mạng**. Sau đó mọi thứ chạy offline.
 
 Kết quả mong đợi:
 
@@ -86,17 +94,16 @@ Chạy lại `setup.bat` bất cứ lúc nào — script **idempotent**, không 
 
 ## 2. Cách 2 — Docker (mọi OS)
 
+> Image đã được CI build sẵn và push lên GHCR — **không cần build ở máy bạn**.
+
 ```bash
 git clone https://github.com/MaxxAlan/ngu.git
 cd ngu
 
-# build image (mặc định CPU; đổi sang --build-arg LLAMA_BACKEND=vulkan|cuda-12.8)
-docker compose build
-
-# tải model vào volume (1 lần, ~19 GB)
+# 1. tai model vao volume (1 lan, ~19 GB)
 docker compose --profile models run --rm fetch-models
 
-# chạy
+# 2. chay (tu pull image da build san)
 docker compose up -d
 ```
 
@@ -105,6 +112,12 @@ docker compose up -d
 
 Model **không** nằm trong image (vài GB) — nó ở volume `ngu-models`, tải qua
 `scripts/fetch_models.py` (cùng manifest với `setup.bat`).
+
+Muốn tự build (ví dụ đổi backend GPU):
+
+```bash
+docker compose --profile build build
+```
 
 ---
 

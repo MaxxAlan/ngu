@@ -65,14 +65,17 @@ setup.bat -Force           # tao lai .venv + tai lai llama.cpp
 
 ### Docker
 
+Image được CI build sẵn và push lên `ghcr.io/maxxalan/ngu` — user **không cần build gì**:
+
 ```bash
-docker build -t ghcr.io/maxxalan/ngu:latest .
-docker compose --profile models run --rm fetch-models   # tai model vao volume
-docker compose up -d
+git clone https://github.com/MaxxAlan/ngu.git
+cd ngu
+docker compose --profile models run --rm fetch-models   # tải model vào volume (1 lần)
+docker compose up -d                                    # kéo image có sẵn
 # web board: http://127.0.0.1:8765/   MCP: http://127.0.0.1:8765/mcp
 ```
 
-Build arg `LLAMA_BACKEND`: `cpu` (mac dinh) | `vulkan` | `cuda-12.8`.
+Build arg `LLAMA_BACKEND`: `cpu` (mac định) | `vulkan` | `cuda-12.8` (chỉ khi tự build).
 
 > CI tu push image len `ghcr.io/maxxalan/ngu` moi lan push len `main` (tag `latest` + `sha`).
 > Image da gan label `org.opencontainers.image.source` nen package duoc link voi repo nay
