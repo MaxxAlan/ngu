@@ -1,0 +1,43 @@
+name: local-agents
+
+services:
+  ngu:
+    build:
+      context: .
+      args:
+        # cpu | vulkan | cuda-12.8
+        LLAMA_BACKEND: ${LLAMA_BACKEND:-cpu}
+    image: ghcr.io/maxxalan/ngu:latest
+    container_name: ngu
+    ports:
+      - "${LA_PORT:-8765}:8765"
+    volumes:
+      - ngu-models:/app/models
+      - ngu-data:/app/data
+    environment:
+      LA_HOST: 0.0.0.0
+      LA_PORT: "8765"
+      LA_DEFAULT_MODEL: ${LA_DEFAULT_MODEL:-qwen2.5-coder-3b}
+      LA_DEFAULT_VISION_MODEL: ${LA_DEFAULT_VISION_MODEL:-qwen2.5-vl-3b}
+      LA_LLAMA_CTX: ${LA_LLAMA_CTX:-32768}
+      LA_LLAMA_NGL: ${LA_LLAMA_NGL:-999}
+      # token HF (khong bat buoc, chi dung khi tai model bi gioi han)
+      HF_TOKEN: ${HF_TOKEN:-}
+    restart: unless-stopped
+
+  # tai model vao volume (chay 1 lan):
+  #   docker compose --profile models run --rm fetch-models
+  fetch-models:
+    build:
+      context: .
+    image: ghcr.io/maxxalan/ngu:latest
+    profiles: ["models"]
+    command: ["python", "scripts/fetch_models.py", "--set", "all"]
+    volumes:
+      - ngu-models:/app/models
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+
+volumes:
+  ngu-models:
+  ngu-data:

@@ -1,0 +1,26 @@
+# Ingress tuy chon - can controller ingress (nginx) + DNS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ngu
+  namespace: ngu
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ngu.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ngu
+                port:
+                  name: http
+  # tls:
+  #   - hosts: [ngu.local]
+  #     secretName: ngu-tls

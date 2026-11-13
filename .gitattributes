@@ -1,0 +1,17 @@
+# mac dinh: LF trong repo, khong phai CRLF
+* text=auto eol=lf
+
+# script Windows can CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# binary
+*.gguf binary
+*.zip binary
+*.tar.gz binary
+*.exe binary
+*.dll binary
+*.so binary
+*.png binary
+*.jpg binary
