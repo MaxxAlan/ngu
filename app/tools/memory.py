@@ -153,6 +153,34 @@ def memory_list(limit: int = 20) -> str:
     return "\n".join(lines)
 
 
+def memory_prune(max_entries: int = 2000, max_age_days: int = 30) -> str:
+    """Delete oldest entries beyond max_entries, and any checkpoint entry older than max_age_days.
+
+    Not exposed to the model - called once at app startup to keep memory.db bounded
+    (unlike buffer_station's own cache, this table never pruned itself before).
+    """
+    con = _connect()
+    con.execute("CREATE TABLE IF NOT EXISTS memory_kv (key TEXT PRIMARY KEY, content TEXT NOT NULL)")
+    cutoff = time.time() - max(0, max_age_days) * 86400
+    deleted = 0
+    with con:
+        stale = con.execute(
+            "SELECT key FROM memory_meta WHERE tags LIKE '%checkpoint%' AND updated < ?",
+            (cutoff,),
+        ).fetchall()
+        rows = con.execute(
+            "SELECT key FROM memory_meta ORDER BY updated DESC LIMIT -1 OFFSET ?",
+            (max(0, max_entries),),
+        ).fetchall()
+        keys = {r["key"] for r in stale} | {r["key"] for r in rows}
+        for key in keys:
+            con.execute("DELETE FROM memory_meta WHERE key = ?", (key,))
+            con.execute("DELETE FROM memory_kv WHERE key = ?", (key,))
+            con.execute("DELETE FROM memory_fts WHERE key = ?", (key,))
+            deleted += 1
+    return f"pruned {deleted} memory entries"
+
+
 def memory_delete(key: str) -> str:
     """Delete a memory entry by key."""
     if not key or not key.strip():

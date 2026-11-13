@@ -25,7 +25,7 @@ from .fs import (
     remove_path,
     write_file,
 )
-from .memory import memory_delete, memory_list, memory_save, memory_search
+from .memory import memory_delete, memory_list, memory_prune, memory_save, memory_search
 from .office import inspect_data, read_docx, read_excel, read_pdf
 from .registry import TOOLS, execute, to_openai_tools
 from .search import search_files
@@ -57,6 +57,7 @@ __all__ = [
     "memory_search",
     "memory_list",
     "memory_delete",
+    "memory_prune",
     "read_excel",
     "read_docx",
     "read_pdf",

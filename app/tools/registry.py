@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import bulk, fs, memory, office, search, seb, shell, web
+from . import bulk, fs, memory, office, search, shell, web
 from .common import ToolError
 
 # Tool specs (OpenAI-compatible). Keep small, clear set for local/small models.
@@ -77,41 +77,19 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_dir",
-            "description": "List immediate children of a directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {"path": {"type": "string", "default": "."}},
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_tree",
-            "description": "Recursively list directory tree (skips .git/node_modules/.venv/__pycache__). Good for exploring large codebases.",
+            "description": (
+                "List a directory. By default lists immediate children only. "
+                "Set recursive=true for a full tree (skips .git/node_modules/.venv/__pycache__). "
+                "Set pattern to a glob (e.g. '*.py', '**/*.ts') to find files/dirs by name instead."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "default": "."},
-                    "max_depth": {"type": "integer", "default": 3},
-                    "max_entries": {"type": "integer", "default": 400},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "glob_files",
-            "description": "Find files/directories by glob/name pattern (e.g. '*.py', '**/*.ts', 'README.md').",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "pattern": {"type": "string", "default": "*"},
-                    "path": {"type": "string", "default": "."},
-                    "max_results": {"type": "integer", "default": 200},
+                    "recursive": {"type": "boolean", "default": False},
+                    "pattern": {"type": "string", "description": "Glob pattern; when set, searches by name instead of listing children."},
+                    "max_depth": {"type": "integer", "description": "Only used with recursive=true.", "default": 3},
+                    "max_results": {"type": "integer", "description": "Max entries returned.", "default": 400},
                 },
                 "required": [],
             },
@@ -137,50 +115,12 @@ TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "mkdir",
-            "description": "Create a directory (including parents).",
-            "parameters": {
-                "type": "object",
-                "properties": {"path": {"type": "string"}},
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "move_path",
-            "description": "Move or rename a file/directory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "src": {"type": "string"},
-                    "dst": {"type": "string"},
-                },
-                "required": ["src", "dst"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "remove_path",
-            "description": "Remove a file or directory. Use recursive=true for non-empty directories.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string"},
-                    "recursive": {"type": "boolean", "default": False},
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "run_shell",
-            "description": "Run a shell command in the workspace. Use for git/build/tests/scripts. Output is truncated.",
+            "description": (
+                "Run a shell command in the workspace. Use for git/build/tests/scripts, "
+                "and also for mkdir/move/rename/delete (e.g. 'mkdir foo', 'mv a b', 'rm -r foo'). "
+                "Output is truncated."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -226,82 +166,7 @@ TOOLS: list[dict] = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "memory_list",
-            "description": "List all saved memory keys with tags and sizes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit": {"type": "integer", "default": 20},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "memory_delete",
-            "description": "Delete a memory entry by key.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {"type": "string"},
-                },
-                "required": ["key"],
-            },
-        },
-    },
-    # ---- office & document tools -------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "read_excel",
-            "description": "Read Excel spreadsheets (.xlsx, .xlsm, .xls). Formats as Markdown table with sheet list and row/col stats.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path to Excel file."},
-                    "sheet_name": {"type": "string", "description": "Specific sheet name to read (optional)."},
-                    "max_rows": {"type": "integer", "description": "Maximum rows to return.", "default": 100},
-                    "max_cols": {"type": "integer", "description": "Maximum columns to return.", "default": 30},
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_docx",
-            "description": "Read Word documents (.docx). Extracts paragraphs, headings, and embedded tables.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path to Word .docx file."},
-                    "max_paragraphs": {"type": "integer", "description": "Maximum paragraphs to extract.", "default": 300},
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "read_pdf",
-            "description": "Read PDF documents (.pdf). Extracts clean text page-by-page.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path to PDF file."},
-                    "max_pages": {"type": "integer", "description": "Maximum pages to read.", "default": 20},
-                },
-                "required": ["path"],
-            },
-        },
-    },
+    # ---- data tools ----------------------------------------------------------
     {
         "type": "function",
         "function": {
@@ -329,39 +194,6 @@ TOOLS: list[dict] = [
                     "max_results": {"type": "integer", "description": "Maximum number of results (1-20).", "default": 5},
                 },
                 "required": ["query"],
-            },
-        },
-    },
-    # ---- specialized project & system tools --------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_seb",
-            "description": (
-                "Deep analysis for Safe Exam Browser (SEB) installations (like D:\\project\\hepii\\sep) or .seb config files. "
-                "Extracts security rules, lock-down policies, quit passwords, exam URLs, permitted/prohibited processes, and configs."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Path to SEB directory or .seb file.", "default": "D:\\project\\hepii\\sep"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "inspect_project",
-            "description": "Deeply inspect any software project architecture, tech stack (Rust, Tauri, Python, Node, C#), key configs, and structure.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {"type": "string", "description": "Project root directory path.", "default": "."},
-                    "focus": {"type": "string", "description": "Specific focus area (optional)."},
-                },
-                "required": [],
             },
         },
     },
@@ -406,11 +238,13 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
             bool(args.get("replace_all", False)),
         )
     if name == "list_dir":
-        return fs.list_dir(str(args.get("path", ".")))
-    if name == "list_tree":
-        return fs.list_tree(str(args.get("path", ".")), int(args.get("max_depth", 3)), int(args.get("max_entries", 400)))
-    if name == "glob_files":
-        return fs.glob_files(str(args.get("pattern", "*")), str(args.get("path", ".")), int(args.get("max_results", 200)))
+        path = str(args.get("path", "."))
+        pattern = args.get("pattern")
+        if pattern:
+            return fs.glob_files(str(pattern), path, int(args.get("max_results", 400)))
+        if bool(args.get("recursive", False)):
+            return fs.list_tree(path, int(args.get("max_depth", 3)), int(args.get("max_results", 400)))
+        return fs.list_dir(path)
     if name == "search_files":
         return search.search_files(
             str(args.get("pattern", "")),
@@ -418,12 +252,6 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
             str(args.get("glob", "*")),
             int(args.get("max_results", 50)),
         )
-    if name == "mkdir":
-        return fs.make_dir(str(args.get("path", "")))
-    if name == "move_path":
-        return fs.move_path(str(args.get("src", "")), str(args.get("dst", "")))
-    if name == "remove_path":
-        return fs.remove_path(str(args.get("path", "")), bool(args.get("recursive", False)))
     if name == "run_shell":
         timeout = args.get("timeout", 60)
         try:
@@ -436,29 +264,9 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
         return memory.memory_save(str(args.get("key", "")), str(args.get("content", "")), str(args.get("tags", "")))
     if name == "memory_search":
         return memory.memory_search(str(args.get("query", "")), int(args.get("limit", 5)))
-    if name == "memory_list":
-        return memory.memory_list(int(args.get("limit", 20)))
-    if name == "memory_delete":
-        return memory.memory_delete(str(args.get("key", "")))
-    # office tools
-    if name == "read_excel":
-        return office.read_excel(
-            str(args.get("path", "")),
-            args.get("sheet_name"),
-            int(args.get("max_rows", 100)),
-            int(args.get("max_cols", 30)),
-        )
-    if name == "read_docx":
-        return office.read_docx(str(args.get("path", "")), int(args.get("max_paragraphs", 300)))
-    if name == "read_pdf":
-        return office.read_pdf(str(args.get("path", "")), int(args.get("max_pages", 20)))
+    # data tools
     if name == "inspect_data":
         return office.inspect_data(str(args.get("path", "")))
-    # specialized tools
-    if name == "analyze_seb":
-        return seb.analyze_seb(str(args.get("path", "D:\\project\\hepii\\sep")))
-    if name == "inspect_project":
-        return seb.inspect_project(str(args.get("path", ".")), args.get("focus"))
     if name == "read_files_tool":
         return await bulk.read_files_tool(
             str(args.get("path", "")),
