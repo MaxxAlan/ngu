@@ -94,7 +94,7 @@ Chạy lại `setup.bat` bất cứ lúc nào — script **idempotent**, không 
 
 ## 2. Cách 2 — Docker (mọi OS)
 
-> Image đã được CI build sẵn và đóng gói trong Release — **không cần build ở máy bạn**.
+> Image được build **trên máy dev** rồi push lên `ghcr.io/maxxalan/ngu` — user **không cần build gì**.
 
 ```bash
 git clone https://github.com/MaxxAlan/ngu.git
@@ -111,7 +111,7 @@ Image lấy từ đâu (theo thứ tự ưu tiên):
 
 | Cách | Lệnh | Ghi chú |
 | --- | --- | --- |
-| Pull từ GHCR | `docker compose up -d` | image `ghcr.io/maxxalan/ngu:latest` |
+| Pull từ GHCR | `docker compose up -d` | image `ghcr.io/maxxalan/ngu:latest` (600 MB, CPU) |
 | Tải file tarball (không cần registry) | `curl -LO https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-image-v0.1.0.tar.gz`<br>`docker load -i ngu-image-v0.1.0.tar.gz` | dùng khi máy không đăng nhập docker |
 | Tự build (đổi backend GPU) | `docker compose --profile build build` | local only |
 
@@ -122,6 +122,24 @@ Image lấy từ đâu (theo thứ tự ưu tiên):
 
 Model **không** nằm trong image (vài GB) — nó ở volume `ngu-models`, tải qua
 `scripts/fetch_models.py` (cùng manifest với `setup.bat`).
+
+### Build image local (dành cho người phát triển)
+
+```bash
+# CPU - nhanh, chạy mọi máy
+docker build -t ghcr.io/maxxalan/ngu:latest .
+
+# NVIDIA GPU (cần NVIDIA Container Toolkit)
+docker build --build-arg LLAMA_BACKEND=cuda-12.8 -t ghcr.io/maxxalan/ngu:cuda .
+
+# push
+docker login ghcr.io -u <user>
+docker push ghcr.io/maxxalan/ngu:latest
+docker push ghcr.io/maxxalan/ngu:cuda
+```
+
+> Image CUDA nặng ~4.3 GB (driver + CUDA runtime đi kèm). CI **không** build image —
+> build ở máy dev rồi push.
 
 ---
 
