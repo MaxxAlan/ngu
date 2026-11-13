@@ -94,7 +94,7 @@ Chạy lại `setup.bat` bất cứ lúc nào — script **idempotent**, không 
 
 ## 2. Cách 2 — Docker (mọi OS)
 
-> Image đã được CI build sẵn và push lên GHCR — **không cần build ở máy bạn**.
+> Image đã được CI build sẵn và đóng gói trong Release — **không cần build ở máy bạn**.
 
 ```bash
 git clone https://github.com/MaxxAlan/ngu.git
@@ -103,21 +103,25 @@ cd ngu
 # 1. tai model vao volume (1 lan, ~19 GB)
 docker compose --profile models run --rm fetch-models
 
-# 2. chay (tu pull image da build san)
+# 2. chay
 docker compose up -d
 ```
+
+Image lấy từ đâu (theo thứ tự ưu tiên):
+
+| Cách | Lệnh | Ghi chú |
+| --- | --- | --- |
+| Pull từ GHCR | `docker compose up -d` | image `ghcr.io/maxxalan/ngu:latest` |
+| Tải file tarball (không cần registry) | `curl -LO https://github.com/MaxxAlan/ngu/releases/latest/download/ngu-image-v0.1.0.tar.gz`<br>`docker load -i ngu-image-v0.1.0.tar.gz` | dùng khi máy không đăng nhập docker |
+| Tự build (đổi backend GPU) | `docker compose --profile build build` | local only |
+
+> `fetch-models` cũng dùng image có sẵn; nếu chưa pull được thì tải tarball ở trên trước.
 
 - Web board: <http://127.0.0.1:8765/>
 - MCP: <http://127.0.0.1:8765/mcp>
 
 Model **không** nằm trong image (vài GB) — nó ở volume `ngu-models`, tải qua
 `scripts/fetch_models.py` (cùng manifest với `setup.bat`).
-
-Muốn tự build (ví dụ đổi backend GPU):
-
-```bash
-docker compose --profile build build
-```
 
 ---
 

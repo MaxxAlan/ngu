@@ -34,6 +34,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=semver,pattern={{version}}
+            type=semver,pattern={{raw}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest
@@ -121,6 +122,16 @@ jobs:
           cd dist
           sha256sum *.zip > SHA256SUMS.txt
 
+      # image docker dang file: user tai ve roi "docker load" - khong can registry
+      - name: Export image (docker load offline)
+        run: |
+          set -eux
+          docker pull "ghcr.io/${{ github.repository }}:${{ github.ref_name }}"
+          docker save "ghcr.io/${{ github.repository }}:${{ github.ref_name }}" \
+            | gzip -1 > "dist/ngu-image-${{ github.ref_name }}.tar.gz"
+          ls -lh dist/
+          cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS.txt
+
       - uses: actions/upload-artifact@v4
         with:
           name: ngu-release-assets
@@ -139,6 +150,7 @@ jobs:
         with:
           files: |
             dist/*.zip
+            dist/*.tar.gz
             dist/SHA256SUMS.txt
           generate_release_notes: true
           body: |
@@ -161,7 +173,13 @@ jobs:
             ### Docker
 
             ```bash
+            # cach 1: pull tu GHCR
             docker pull ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            docker compose up -d
+
+            # cach 2: khong can registry - tai image tarball roi load
+            curl -LO https://github.com/${{ github.repository }}/releases/latest/download/ngu-image-${{ github.ref_name }}.tar.gz
+            docker load -i ngu-image-${{ github.ref_name }}.tar.gz
             docker compose up -d
             ```
 

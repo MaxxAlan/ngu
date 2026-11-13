@@ -6,7 +6,8 @@ name: local-agents
 services:
   ngu:
     image: ghcr.io/maxxalan/ngu:latest
-    pull_policy: always
+    # "missing": dung image local neu da co (docker load), khong pull lai
+    pull_policy: missing
     container_name: ngu
     ports:
       - "${LA_PORT:-8765}:8765"
