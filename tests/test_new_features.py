@@ -1,7 +1,9 @@
+import asyncio
 import os
+import zipfile
 from pathlib import Path
 import pytest
-from app.tools import office, seb
+from app.tools import bulk, office, seb
 from app.tools.registry import TOOLS, execute
 from app.buffer_station import station
 from app.router import route_model, get_available_roles
@@ -13,8 +15,25 @@ def test_registry_has_new_tools():
     assert "read_docx" in tool_names
     assert "read_pdf" in tool_names
     assert "inspect_data" in tool_names
+    assert "read_files_tool" in tool_names
     assert "analyze_seb" in tool_names
     assert "inspect_project" in tool_names
+
+
+def test_read_files_tool_folder(workspace):
+    (workspace / "a.txt").write_text("hello a", encoding="utf-8")
+    (workspace / "b.txt").write_text("hello b", encoding="utf-8")
+    out = asyncio.run(bulk.read_files_tool(str(workspace), ocr=False))
+    assert "a.txt" in out and "hello a" in out
+    assert "b.txt" in out and "hello b" in out
+
+
+def test_read_files_tool_zip(workspace):
+    zpath = workspace / "bundle.zip"
+    with zipfile.ZipFile(zpath, "w") as zf:
+        zf.writestr("note.txt", "zipped content")
+    out = asyncio.run(bulk.read_files_tool(str(zpath), ocr=False))
+    assert "note.txt" in out and "zipped content" in out
 
 
 def test_buffer_station():
