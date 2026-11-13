@@ -1,5 +1,9 @@
 # local-agents
 
+[![CI](https://github.com/MaxxAlan/ngu/actions/workflows/ci.yml/badge.svg)](https://github.com/MaxxAlan/ngu/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/MaxxAlan/ngu)](https://github.com/MaxxAlan/ngu/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Local coding agent that runs **gguf models directly on llama.cpp**. CLI-first, with an
 optional web board and an MCP server sharing the same task store.
 
@@ -67,6 +71,12 @@ docker compose up -d
 ```
 
 Build arg `LLAMA_BACKEND`: `cpu` (mac dinh) | `vulkan` | `cuda-12.8`.
+
+> CI tu push image len `ghcr.io/maxxalan/ngu` moi lan push len `main`. Package mac dinh
+> la **private** - doi sang **public** mot lan tai
+> *Settings -> Packages -> ngu -> Change visibility -> Public*
+> (hoac `gh api -X PATCH /user/packages/container/ngu -f visibility=public` neu token co
+> scope `write:packages`).
 
 ### Kubernetes
 
