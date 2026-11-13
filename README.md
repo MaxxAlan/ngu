@@ -74,11 +74,9 @@ docker compose up -d
 
 Build arg `LLAMA_BACKEND`: `cpu` (mac dinh) | `vulkan` | `cuda-12.8`.
 
-> CI tu push image len `ghcr.io/maxxalan/ngu` moi lan push len `main`. Package mac dinh
-> la **private** - doi sang **public** mot lan tai
-> *Settings -> Packages -> ngu -> Change visibility -> Public*
-> (hoac `gh api -X PATCH /user/packages/container/ngu -f visibility=public` neu token co
-> scope `write:packages`).
+> CI tu push image len `ghcr.io/maxxalan/ngu` moi lan push len `main` (tag `latest` + `sha`).
+> Image da gan label `org.opencontainers.image.source` nen package duoc link voi repo nay
+> va ke thua quyen truy cap cua repo.
 
 ### Kubernetes
 
