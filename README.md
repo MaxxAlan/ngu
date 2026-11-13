@@ -95,7 +95,7 @@ setup.bat -Force           # tao lai .venv + tai lai llama.cpp
 
 ### Docker
 
-Image được CI build sẵn và push lên `ghcr.io/maxxalan/ngu` — user **không cần build gì**:
+Image được build **trên máy dev** rồi push lên `ghcr.io/maxxalan/ngu` — user **không cần build gì**:
 
 ```bash
 git clone https://github.com/MaxxAlan/ngu.git
