@@ -100,7 +100,6 @@ class AIBufferStation:
         if not messages:
             return messages
 
-        compressed: list[dict[str, Any]] = []
         head = messages[:1]  # System prompt
         body = messages[1:]
 
@@ -133,7 +132,7 @@ class AIBufferStation:
             # Older assistant messages with large code
             if role == "assistant" and len(str(content)) > 1500:
                 str_content = str(content)
-                truncated = str_content[:600] + f"\n... [previous answer truncated to save context]"
+                truncated = str_content[:600] + "\n... [previous answer truncated to save context]"
                 new_msg = dict(msg)
                 new_msg["content"] = truncated
                 kept_body.append(new_msg)

@@ -347,7 +347,7 @@ async def run_agent(
 
     for i in range(max_steps):
         # 2. VRAM Protection: Compress old turns and truncate ancient tool logs
-        messages[:] = station.compress_messages_for_vram(messages)
+        messages[:] = station.compress_messages_for_vram(messages, max_total_chars=max(4000, config.LLAMA_CTX * 3))
         _trim_messages(messages)
         native: list[dict] = []
         req_max = step_max_tokens

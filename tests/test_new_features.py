@@ -1,12 +1,10 @@
 import asyncio
-import os
 import zipfile
-from pathlib import Path
-import pytest
-from app.tools import bulk, office, seb
-from app.tools.registry import TOOLS, execute
+
 from app.buffer_station import station
-from app.router import route_model, get_available_roles
+from app.router import get_available_roles, route_model
+from app.tools import bulk, seb
+from app.tools.registry import TOOLS
 
 
 def test_registry_has_new_tools():

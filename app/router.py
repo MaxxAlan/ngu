@@ -3,10 +3,9 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any
 
 from . import config
-from .models import discover_models, get_model, is_vision
+from .models import discover_models, get_model
 
 log = logging.getLogger("local-agents.router")
 
@@ -80,7 +79,7 @@ def route_model(prompt: str, has_images: bool = False, current_model: str | None
         return roles.vision_specialist
 
     low = (prompt or "").lower()
-    words = set(re.findall(r"\w+", low))
+    set(re.findall(r"\w+", low))
 
     # Explicit light task
     if any(k in low for k in LIGHT_KEYWORDS) and len(low) < 120 and not any(k in low for k in HEAVY_KEYWORDS):
