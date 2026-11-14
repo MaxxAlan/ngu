@@ -40,14 +40,14 @@ def _iter_leaf_files(root: Path, max_files: int) -> list[Path]:
 
 def _safe_extract_zip(zf: zipfile.ZipFile, dest: Path) -> None:
     for member in zf.infolist():
-        if not (dest / member.filename).resolve().is_relative_to(dest):
+        if member.filename.startswith("/") or ".." in member.filename.replace("\\", "/").split("/"):
             raise ToolError(f"unsafe path in archive: {member.filename}")
     zf.extractall(dest)
 
 
 def _safe_extract_tar(tf: tarfile.TarFile, dest: Path) -> None:
     for member in tf.getmembers():
-        if not (dest / member.name).resolve().is_relative_to(dest):
+        if member.name.startswith("/") or ".." in member.name.replace("\\", "/").split("/"):
             raise ToolError(f"unsafe path in archive: {member.name}")
     tf.extractall(dest)  # noqa: S202 - members validated above
 

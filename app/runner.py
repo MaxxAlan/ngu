@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import agent, attachments, config, router, store
 from .tools import memory
-from .tools.common import allow_path, allow_write_path
+from .tools.common import allow_write_path
 
 log = logging.getLogger("local-agents.runner")
 

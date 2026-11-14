@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import csv
-import io
 import json
 import sqlite3
-from pathlib import Path
-from typing import Any
 
 from .common import ToolError, allow_path, clip, resolve_path
 
@@ -68,7 +65,7 @@ def read_excel(
         )
 
     # Build Markdown table
-    header = rows[0]
+    rows[0]
     md_lines: list[str] = [
         f"### Excel: {p.name} | Sheet: {target_sheet} (Sheets available: {', '.join(sheet_names)})",
         f"Showing {len(rows)} of {total_rows} rows (max cols: {max_cols}):",

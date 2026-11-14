@@ -15,7 +15,6 @@ from . import attachments, config, llm, store
 from .llama_runtime import runtime
 from .mcp_server import build_mcp
 from .models import discover_models, get_model
-from .router import get_available_roles
 from .runner import runner, running
 from .tools.memory import memory_prune
 

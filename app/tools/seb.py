@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import base64
 import gzip
-import os
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
