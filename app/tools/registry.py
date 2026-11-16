@@ -155,14 +155,62 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "memory_search",
-            "description": "Search persistent memory by keyword/phrase. Use before reading large files to check if the info was already cached.",
+            "description": (
+                "Search persistent memory by keyword/phrase (FTS5 + LIKE fallback). "
+                "Use before reading large files to check if the info was already cached. "
+                "Optional tags filter narrows results."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Keywords to search for."},
                     "limit": {"type": "integer", "description": "Max results.", "default": 5},
+                    "tags": {"type": "string", "description": "Optional tag substring filter.", "default": ""},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_get",
+            "description": "Fetch one memory entry by exact key (full content).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Exact memory key."},
+                },
+                "required": ["key"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_list",
+            "description": "List saved memory keys (newest first). Optional tags filter.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Max entries.", "default": 20},
+                    "tags": {"type": "string", "description": "Optional tag substring filter.", "default": ""},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_delete",
+            "description": "Delete one memory entry by key.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string", "description": "Exact memory key to delete."},
+                },
+                "required": ["key"],
             },
         },
     },
@@ -263,7 +311,17 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
     if name == "memory_save":
         return memory.memory_save(str(args.get("key", "")), str(args.get("content", "")), str(args.get("tags", "")))
     if name == "memory_search":
-        return memory.memory_search(str(args.get("query", "")), int(args.get("limit", 5)))
+        return memory.memory_search(
+            str(args.get("query", "")),
+            int(args.get("limit", 5)),
+            str(args.get("tags", "")),
+        )
+    if name == "memory_get":
+        return memory.memory_get(str(args.get("key", "")))
+    if name == "memory_list":
+        return memory.memory_list(int(args.get("limit", 20)), str(args.get("tags", "")))
+    if name == "memory_delete":
+        return memory.memory_delete(str(args.get("key", "")))
     # data tools
     if name == "inspect_data":
         return office.inspect_data(str(args.get("path", "")))
