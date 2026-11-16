@@ -1,0 +1,345 @@
+{
+  "version": 1,
+  "name": "ngu-phase0-agent-benchmark",
+  "description": "Fixed Phase 0 task set. Offline reference plans prove harness reproducibility; live mode scores a real model on the same checks.",
+  "tasks": [
+    {
+      "id": "fs01_list_root",
+      "category": "tool_validity",
+      "prompt": "List the files in the current workspace directory.",
+      "setup": {"files": {"hello.txt": "hello\n"}},
+      "reference_plan": [
+        {"name": "list_dir", "arguments": {"path": "."}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "list_dir"},
+        {"type": "max_steps", "value": 4}
+      ]
+    },
+    {
+      "id": "fs02_read_file",
+      "category": "tool_validity",
+      "prompt": "Read the file notes.txt and report its contents.",
+      "setup": {"files": {"notes.txt": "alpha-beta-gamma\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "notes.txt"}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "read_file"},
+        {"type": "answer_contains", "value": "alpha-beta-gamma"},
+        {"type": "max_steps", "value": 4}
+      ]
+    },
+    {
+      "id": "fs03_write_file",
+      "category": "task_completion",
+      "prompt": "Create a file named out.txt containing exactly: ready",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "out.txt", "content": "ready"}}
+      ],
+      "checks": [
+        {"type": "file_exists", "path": "out.txt"},
+        {"type": "file_equals", "path": "out.txt", "value": "ready"},
+        {"type": "max_steps", "value": 4}
+      ]
+    },
+    {
+      "id": "fs04_edit_file",
+      "category": "task_completion",
+      "prompt": "In config.txt replace OLD with NEW using an exact edit.",
+      "setup": {"files": {"config.txt": "value=OLD\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "config.txt"}},
+        {"name": "edit_file", "arguments": {"path": "config.txt", "old_text": "OLD", "new_text": "NEW"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "config.txt", "value": "NEW"},
+        {"type": "file_not_contains", "path": "config.txt", "value": "OLD"},
+        {"type": "tool_used", "name": "edit_file"}
+      ]
+    },
+    {
+      "id": "fs05_mkdir",
+      "category": "task_completion",
+      "prompt": "Create a directory named build/output",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "make_dir", "arguments": {"path": "build/output"}}
+      ],
+      "checks": [
+        {"type": "dir_exists", "path": "build/output"}
+      ]
+    },
+    {
+      "id": "fs06_search",
+      "category": "tool_validity",
+      "prompt": "Search the workspace for the string TODO and report matching files.",
+      "setup": {"files": {"a.py": "x = 1\n# TODO fix\n", "b.py": "print('ok')\n"}},
+      "reference_plan": [
+        {"name": "search_files", "arguments": {"pattern": "TODO", "path": "."}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "search_files"},
+        {"type": "answer_contains", "value": "a.py"}
+      ]
+    },
+    {
+      "id": "fs07_glob_py",
+      "category": "tool_validity",
+      "prompt": "Find all .py files in the workspace.",
+      "setup": {"files": {"main.py": "pass\n", "readme.md": "x\n"}},
+      "reference_plan": [
+        {"name": "list_dir", "arguments": {"path": ".", "pattern": "*.py"}}
+      ],
+      "checks": [
+        {"type": "answer_contains", "value": "main.py"},
+        {"type": "max_steps", "value": 4}
+      ]
+    },
+    {
+      "id": "fs08_append",
+      "category": "task_completion",
+      "prompt": "Append the line 'second' to log.txt (create if needed).",
+      "setup": {"files": {"log.txt": "first\n"}},
+      "reference_plan": [
+        {"name": "append_file", "arguments": {"path": "log.txt", "content": "second\n"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "log.txt", "value": "first"},
+        {"type": "file_contains", "path": "log.txt", "value": "second"}
+      ]
+    },
+    {
+      "id": "fs09_write_read_roundtrip",
+      "category": "task_completion",
+      "prompt": "Write secret=42 into vars.env then read it back and confirm.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "vars.env", "content": "secret=42\n"}},
+        {"name": "read_file", "arguments": {"path": "vars.env"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "vars.env", "value": "secret=42"},
+        {"type": "answer_contains", "value": "42"}
+      ]
+    },
+    {
+      "id": "fs10_nested_write",
+      "category": "task_completion",
+      "prompt": "Write ok into src/pkg/mod.py (create parents).",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "src/pkg/mod.py", "content": "ok\n"}}
+      ],
+      "checks": [
+        {"type": "file_exists", "path": "src/pkg/mod.py"},
+        {"type": "file_contains", "path": "src/pkg/mod.py", "value": "ok"}
+      ]
+    },
+    {
+      "id": "fs11_multi_file",
+      "category": "planning",
+      "prompt": "Create one.txt with 1 and two.txt with 2.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "one.txt", "content": "1"}},
+        {"name": "write_file", "arguments": {"path": "two.txt", "content": "2"}}
+      ],
+      "checks": [
+        {"type": "file_equals", "path": "one.txt", "value": "1"},
+        {"type": "file_equals", "path": "two.txt", "value": "2"}
+      ]
+    },
+    {
+      "id": "fs12_move",
+      "category": "task_completion",
+      "prompt": "Move old_name.txt to new_name.txt.",
+      "setup": {"files": {"old_name.txt": "payload\n"}},
+      "reference_plan": [
+        {"name": "move_path", "arguments": {"src": "old_name.txt", "dst": "new_name.txt"}}
+      ],
+      "checks": [
+        {"type": "file_exists", "path": "new_name.txt"},
+        {"type": "file_not_exists", "path": "old_name.txt"},
+        {"type": "file_contains", "path": "new_name.txt", "value": "payload"}
+      ]
+    },
+    {
+      "id": "fs13_remove",
+      "category": "task_completion",
+      "prompt": "Delete trash.txt from the workspace.",
+      "setup": {"files": {"trash.txt": "gone\n", "keep.txt": "stay\n"}},
+      "reference_plan": [
+        {"name": "remove_path", "arguments": {"path": "trash.txt"}}
+      ],
+      "checks": [
+        {"type": "file_not_exists", "path": "trash.txt"},
+        {"type": "file_exists", "path": "keep.txt"}
+      ]
+    },
+    {
+      "id": "fs14_json_edit",
+      "category": "task_completion",
+      "prompt": "Change the version field in package.json from 0.0.1 to 0.1.0.",
+      "setup": {"files": {"package.json": "{\n  \"name\": \"demo\",\n  \"version\": \"0.0.1\"\n}\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "package.json"}},
+        {"name": "edit_file", "arguments": {"path": "package.json", "old_text": "0.0.1", "new_text": "0.1.0"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "package.json", "value": "0.1.0"},
+        {"type": "file_not_contains", "path": "package.json", "value": "0.0.1"}
+      ]
+    },
+    {
+      "id": "fs15_fix_syntax",
+      "category": "recovery",
+      "prompt": "Fix the syntax error in broken.py so it is valid Python assigning x = 1.",
+      "setup": {"files": {"broken.py": "x =\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "broken.py"}},
+        {"name": "write_file", "arguments": {"path": "broken.py", "content": "x = 1\n"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "broken.py", "value": "x = 1"}
+      ]
+    },
+    {
+      "id": "fs16_copy_content",
+      "category": "planning",
+      "prompt": "Copy the full contents of source.txt into dest.txt.",
+      "setup": {"files": {"source.txt": "line-a\nline-b\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "source.txt"}},
+        {"name": "write_file", "arguments": {"path": "dest.txt", "content": "line-a\nline-b\n"}}
+      ],
+      "checks": [
+        {"type": "file_equals", "path": "dest.txt", "value": "line-a\nline-b\n"}
+      ]
+    },
+    {
+      "id": "const17_single_file",
+      "category": "constraints",
+      "prompt": "Only modify target.txt: set its content to done. Do not modify other.txt.",
+      "setup": {"files": {"target.txt": "old\n", "other.txt": "untouched\n"}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "target.txt", "content": "done\n"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "target.txt", "value": "done"},
+        {"type": "file_equals", "path": "other.txt", "value": "untouched\n"},
+        {"type": "tool_not_used_on", "name": "write_file", "path": "other.txt"}
+      ]
+    },
+    {
+      "id": "const18_no_shell_needed",
+      "category": "constraints",
+      "prompt": "Create greeting.txt with hello using file tools only (no shell).",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "greeting.txt", "content": "hello"}}
+      ],
+      "checks": [
+        {"type": "file_equals", "path": "greeting.txt", "value": "hello"},
+        {"type": "tool_not_used", "name": "run_shell"}
+      ]
+    },
+    {
+      "id": "shell19_echo",
+      "category": "tool_validity",
+      "prompt": "Run a shell command that prints BENCHMARK_OK in the workspace.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "run_shell", "arguments": {"command": "echo BENCHMARK_OK"}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "run_shell"},
+        {"type": "answer_contains", "value": "BENCHMARK_OK"}
+      ]
+    },
+    {
+      "id": "mem20_save_search",
+      "category": "memory",
+      "prompt": "Save a memory with key 'fact1' content 'Paris is in France', then search memory for Paris.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "memory_save", "arguments": {"key": "fact1", "content": "Paris is in France", "tags": "geo"}},
+        {"name": "memory_search", "arguments": {"query": "Paris"}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "memory_save"},
+        {"type": "tool_used", "name": "memory_search"},
+        {"type": "answer_contains", "value": "Paris"}
+      ]
+    },
+    {
+      "id": "plan21_readme_summary",
+      "category": "planning",
+      "prompt": "Read README.md and write a one-line summary into summary.txt.",
+      "setup": {"files": {"README.md": "# Demo\n\nThis project counts widgets.\n"}},
+      "reference_plan": [
+        {"name": "read_file", "arguments": {"path": "README.md"}},
+        {"name": "write_file", "arguments": {"path": "summary.txt", "content": "Project about counting widgets.\n"}}
+      ],
+      "checks": [
+        {"type": "file_exists", "path": "summary.txt"},
+        {"type": "tool_used", "name": "read_file"}
+      ]
+    },
+    {
+      "id": "rec22_retry_after_missing",
+      "category": "recovery",
+      "prompt": "Read missing.txt if present; otherwise create missing.txt with created-after-miss and read it.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "missing.txt", "content": "created-after-miss\n"}},
+        {"name": "read_file", "arguments": {"path": "missing.txt"}}
+      ],
+      "checks": [
+        {"type": "file_contains", "path": "missing.txt", "value": "created-after-miss"},
+        {"type": "answer_contains", "value": "created-after-miss"}
+      ]
+    },
+    {
+      "id": "false23_must_write",
+      "category": "false_completion",
+      "prompt": "Create report.md with the text complete. Saying you did it without writing the file is failure.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "report.md", "content": "complete"}}
+      ],
+      "checks": [
+        {"type": "file_exists", "path": "report.md"},
+        {"type": "file_contains", "path": "report.md", "value": "complete"}
+      ]
+    },
+    {
+      "id": "steps24_budget",
+      "category": "efficiency",
+      "prompt": "Write only the word ping into ping.txt.",
+      "setup": {"files": {}},
+      "reference_plan": [
+        {"name": "write_file", "arguments": {"path": "ping.txt", "content": "ping"}}
+      ],
+      "checks": [
+        {"type": "file_equals", "path": "ping.txt", "value": "ping"},
+        {"type": "max_steps", "value": 3},
+        {"type": "max_tool_calls", "value": 2}
+      ]
+    },
+    {
+      "id": "tree25_list_recursive",
+      "category": "tool_validity",
+      "prompt": "Show a recursive listing of the workspace tree.",
+      "setup": {"files": {"d/a.txt": "1\n", "d/e/b.txt": "2\n"}},
+      "reference_plan": [
+        {"name": "list_dir", "arguments": {"path": ".", "recursive": true}}
+      ],
+      "checks": [
+        {"type": "tool_used", "name": "list_dir"},
+        {"type": "answer_contains", "value": "a.txt"}
+      ]
+    }
+  ]
+}

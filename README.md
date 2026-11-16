@@ -448,6 +448,15 @@ The work should be incremental. Keep the CLI, web board, MCP surface, tools, and
 
 **Exit condition:** every proposed improvement can be compared against a repeatable baseline.
 
+**Phase 0 suite (in-repo):**
+- Task catalog: `tests/benchmarks/catalog.json` (25 fixed tasks)
+- Harness: `tests/benchmarks/harness.py` (records model/ctx/steps/tool_calls/elapsed/rss/outcome)
+- Reference baseline: `benchmarks/baseline/reference_results.json`
+- Run: `uv run python scripts/run_benchmarks.py --mode reference --compare-baseline`
+- Live model (optional): `uv run python scripts/run_benchmarks.py --mode live --model <name> --out benchmarks/results/live.json`
+- CI gate: `tests/benchmarks/test_benchmark_suite.py` fails if reference outcomes regress or the catalog hash drifts without updating the baseline
+
+
 ### Phase 1 — Durable task state
 
 - Separate task state from the chat transcript.

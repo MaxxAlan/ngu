@@ -293,6 +293,12 @@ async def execute(name: str, arguments: dict[str, Any]) -> str:
         if bool(args.get("recursive", False)):
             return fs.list_tree(path, int(args.get("max_depth", 3)), int(args.get("max_results", 400)))
         return fs.list_dir(path)
+    if name == "make_dir":
+        return fs.make_dir(str(args.get("path", "")))
+    if name == "remove_path":
+        return fs.remove_path(str(args.get("path", "")), bool(args.get("recursive", False)))
+    if name == "move_path":
+        return fs.move_path(str(args.get("src", "")), str(args.get("dst", "")))
     if name == "search_files":
         return search.search_files(
             str(args.get("pattern", "")),
