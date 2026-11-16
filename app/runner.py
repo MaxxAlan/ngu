@@ -171,8 +171,11 @@ class Runner:
                     }
                 )
                 log.info("task %s resuming from checkpoint (%d messages)", task_id, len(messages))
-                progress = memory.memory_search(f"task:{task_id}:progress", limit=1)
-                if "no memory entries" not in progress:
+                try:
+                    progress = memory.memory_get(f"task:{task_id}:progress")
+                except Exception:
+                    progress = ""
+                if progress and "no memory entry" not in progress.lower():
                     messages.append({"role": "user", "content": f"Last known progress:\n{progress}"})
             else:
                 messages = [
