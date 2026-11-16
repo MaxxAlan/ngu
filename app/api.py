@@ -6,8 +6,9 @@ import json
 import logging
 import uuid
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -16,10 +17,52 @@ from .llama_runtime import runtime
 from .mcp_server import build_mcp
 from .models import discover_models, get_model
 from .runner import runner, running
+from .tools.common import PermissionDenied, resolve_attachment_path
 from .tools.memory import memory_prune
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("local-agents.api")
+
+_bearer = HTTPBearer(auto_error=False)
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _token_from_request(
+    creds: HTTPAuthorizationCredentials | None,
+    api_key: str | None,
+) -> str | None:
+    if creds and creds.scheme.lower() == "bearer" and creds.credentials:
+        return creds.credentials.strip()
+    if api_key and api_key.strip():
+        return api_key.strip()
+    return None
+
+
+def require_api_token(
+    creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
+    api_key: str | None = Depends(_api_key_header),
+) -> None:
+    """Enforce LA_API_TOKEN when configured. Public only when token is empty (local dev)."""
+    expected = config.API_TOKEN
+    if not expected:
+        return
+    provided = _token_from_request(creds, api_key)
+    if not provided or provided != expected:
+        raise HTTPException(status_code=401, detail="unauthorized: missing or invalid API token")
+
+
+def _warn_if_exposed_without_token() -> None:
+    if config.API_TOKEN:
+        return
+    if config.is_loopback_host():
+        return
+    log.warning(
+        "LA_HOST=%s binds beyond loopback but LA_API_TOKEN is empty — "
+        "HTTP API, /board, and MCP are unauthenticated. Set LA_API_TOKEN before exposing.",
+        config.HOST,
+    )
+
+
 
 
 class TaskIn(BaseModel):
@@ -64,6 +107,34 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="local-agents", lifespan=lifespan)
 
+    @app.middleware("http")
+    async def api_token_middleware(request: Request, call_next):
+        """Require LA_API_TOKEN for non-public routes when the token is configured.
+
+        Public without token: /api/health (k8s probes). Everything else under
+        /api/*, /board, /mcp, and the MCP mount requires a matching
+        Authorization: Bearer <token> or X-API-Key header when LA_API_TOKEN is set.
+        """
+        path = request.url.path
+        if not config.API_TOKEN:
+            return await call_next(request)
+        if path == "/api/health" or path.startswith("/api/health/"):
+            return await call_next(request)
+        # static assets for the board still need auth when token is set (same origin fetch
+        # should send the header; unauthenticated browsers get 401).
+        auth = request.headers.get("authorization") or ""
+        api_key = request.headers.get("x-api-key") or ""
+        provided = None
+        if auth.lower().startswith("bearer "):
+            provided = auth[7:].strip()
+        elif api_key.strip():
+            provided = api_key.strip()
+        if provided != config.API_TOKEN:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "unauthorized: missing or invalid API token"}, status_code=401)
+        return await call_next(request)
+
+
     @app.get("/api/health")
     async def health() -> dict:
         return {
@@ -94,6 +165,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/tasks", status_code=201)
     async def create_task(body: TaskIn) -> dict:
+        safe_attachments: list[str] = []
+        for raw in body.attachments or []:
+            try:
+                safe_attachments.append(str(resolve_attachment_path(raw)))
+            except PermissionDenied as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         task = store.create_task(
             title=body.title,
             prompt=body.prompt,
@@ -101,7 +178,7 @@ def create_app() -> FastAPI:
             model=body.model,
             source="ui",
             auto_run=body.auto_run,
-            attachments=body.attachments,
+            attachments=safe_attachments,
         )
         if body.auto_run:
             task = await runner.submit(task["id"])

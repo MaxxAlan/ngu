@@ -86,6 +86,10 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 # ---- server (web + mcp) -------------------------------------------------
 HOST = _get("LA_HOST", "127.0.0.1").strip() or "127.0.0.1"
 PORT = _int("LA_PORT", 8765)
+# Shared secret for HTTP API / board / MCP when exposed beyond localhost.
+# Empty = auth disabled (only appropriate for LA_HOST=127.0.0.1).
+API_TOKEN = _get("LA_API_TOKEN", "").strip()
+
 
 # ---- llama.cpp runtime --------------------------------------------------
 _DEFAULT_LLAMA_DIR = BASE_DIR / "runtime" / "llama.cpp"
@@ -488,3 +492,9 @@ def finalize_creative_output(prompt: str, answer: str) -> str | None:
             return None
     clean_story_file(target)
     return str(target)
+
+
+def is_loopback_host(host: str | None = None) -> bool:
+    """True when the configured bind address is loopback-only."""
+    h = (host if host is not None else HOST).strip().lower()
+    return h in {"127.0.0.1", "localhost", "::1"}

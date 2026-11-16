@@ -40,8 +40,8 @@ def classify(path: Path) -> str:
 
 
 def describe(path: Path, max_chars: int = 6000) -> dict:
-    from .tools.common import allow_path
-    allow_path(path)
+    # Caller must pass a path already validated (resolve_attachment_path) or
+    # produced by save_upload. Do not grant permanent process-wide path access.
     kind = classify(path)
     info = {"path": str(path), "name": path.name, "kind": kind, "size": path.stat().st_size}
     if kind == "text":

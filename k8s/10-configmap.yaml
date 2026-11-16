@@ -12,6 +12,8 @@ data:
     # ---- server ----
     LA_HOST=0.0.0.0
     LA_PORT=8765
+    # Auth: set LA_API_TOKEN via Secret (see 20-secret.example.yaml).
+    # Leaving empty while LA_HOST is 0.0.0.0 is insecure.
     # ---- llama.cpp ----
     LA_LLAMA_DIR=/app/runtime/llama.cpp
     LA_LLAMA_DEVICE=

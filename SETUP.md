@@ -209,6 +209,16 @@ Mặc định **an toàn**: agent bị chặn khi chạm ngoài workspace. Bật
 
 Không expose board ra ngoài máy nếu chưa đặt reverse proxy + auth.
 
+### Xác thực HTTP API / MCP (`LA_API_TOKEN`)
+
+Khi bind ngoài loopback (`LA_HOST=0.0.0.0` trong Docker/K8s), đặt `LA_API_TOKEN` (Secret K8s hoặc biến môi trường Compose). Mọi request tới `/api/*` (trừ `/api/health`), `/board` và MCP cần header:
+
+```
+Authorization: Bearer <token>
+```
+hoặc `X-API-Key: <token>`. Local (`LA_HOST=127.0.0.1`) có thể để trống token.
+
+
 ---
 
 ## 7. Xử lý sự cố

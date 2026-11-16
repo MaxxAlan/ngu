@@ -6,13 +6,14 @@ from mcp.server.fastmcp import FastMCP
 
 from . import config, llm, store
 from .runner import runner
+from .tools.common import PermissionDenied, resolve_attachment_path
 
 INSTRUCTIONS = (
     "Local coding-agent dispatcher backed by llama.cpp. Create tasks with assign_task; "
     f"they run on a local gguf model ({config.DEFAULT_MODEL}) with file/shell tools. "
     "Use wait_for_task to block until a task finishes, then read its result and steps. "
-    "Attach files or images by passing absolute paths in `attachments`; image tasks "
-    f"automatically use the vision model ({config.DEFAULT_VISION_MODEL}). "
+    "Attach files via paths returned by /api/upload (under the upload dir) or workspace paths; "
+    f"image tasks automatically use the vision model ({config.DEFAULT_VISION_MODEL}). "
     f"Tasks are visible in the web board at http://{config.HOST}:{config.PORT}/."
 )
 
@@ -42,13 +43,19 @@ def build_mcp() -> FastMCP:
             title: Short label; derived from the prompt when empty.
             agent: Agent name to attribute the task to (default local-agent).
             model: Model alias from list_models (default configured model).
-            attachments: Absolute paths to files or images to send with the task.
+            attachments: Paths under upload dir (from /api/upload) or workspace only.
             auto_run: Queue the task right away (false = save as draft).
 
         Returns the created task object, including its id and status.
         """
         if not prompt.strip():
             raise ValueError("prompt is required")
+        safe_attachments: list[str] = []
+        for raw in attachments or []:
+            try:
+                safe_attachments.append(str(resolve_attachment_path(raw)))
+            except PermissionDenied as exc:
+                raise ValueError(str(exc)) from exc
         task = store.create_task(
             title=title,
             prompt=prompt,
@@ -56,7 +63,7 @@ def build_mcp() -> FastMCP:
             model=model or config.DEFAULT_MODEL,
             source="mcp",
             auto_run=auto_run,
-            attachments=attachments or [],
+            attachments=safe_attachments,
         )
         if auto_run:
             task = await runner.submit(task["id"])

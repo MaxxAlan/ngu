@@ -17,6 +17,8 @@ services:
     environment:
       LA_HOST: 0.0.0.0
       LA_PORT: "8765"
+      # Required when exposing beyond localhost — send as Bearer or X-API-Key
+      LA_API_TOKEN: ${LA_API_TOKEN:-}
       LA_DEFAULT_MODEL: ${LA_DEFAULT_MODEL:-qwen2.5-coder-3b}
       LA_DEFAULT_VISION_MODEL: ${LA_DEFAULT_VISION_MODEL:-qwen2.5-vl-3b}
       LA_LLAMA_CTX: ${LA_LLAMA_CTX:-32768}
