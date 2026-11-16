@@ -1,5 +1,8 @@
 import asyncio
 import zipfile
+from pathlib import Path
+
+import pytest
 
 from app.buffer_station import station
 from app.router import get_available_roles, route_model
@@ -8,16 +11,29 @@ from app.tools.registry import TOOLS
 
 
 def test_registry_has_new_tools():
-    # Consolidated to a 12-tool surface for weak local models: office readers
-    # (read_excel/read_docx/read_pdf) and niche tools (analyze_seb,
-    # inspect_project) are no longer model-facing - inspect_data/
-    # read_files_tool cover the same ground with less ambiguity.
+    # Model-facing tool surface: core FS/shell + memory suite + inspect/read_files/web.
+    # Office readers and niche SEB tools stay importable but are not model-facing.
     tool_names = {t["function"]["name"] for t in TOOLS}
-    assert len(tool_names) == 12
-    assert "inspect_data" in tool_names
-    assert "read_files_tool" in tool_names
+    required = {
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_dir",
+        "search_files",
+        "run_shell",
+        "memory_save",
+        "memory_search",
+        "memory_get",
+        "memory_list",
+        "memory_delete",
+        "inspect_data",
+        "read_files_tool",
+    }
+    assert required.issubset(tool_names)
     assert "read_excel" not in tool_names
     assert "analyze_seb" not in tool_names
+    # Keep surface small for local models (memory suite is intentional).
+    assert 12 <= len(tool_names) <= 16
 
 
 def test_read_files_tool_folder(workspace):
@@ -61,12 +77,18 @@ def test_router():
 
 
 def test_seb_analysis():
-    # Analyze the actual sep path on this machine
-    res = seb.analyze_seb(r"D:\project\hepii\sep")
+    # Local Windows path — skip on CI / machines without that tree.
+    path = Path(r"D:\project\hepii\sep")
+    if not path.exists():
+        pytest.skip(f"SEB path not present: {path}")
+    res = seb.analyze_seb(str(path))
     assert "Safe Exam Browser" in res
     assert "Application" in res or "Overview" in res
 
 
 def test_inspect_project():
-    res = seb.inspect_project(r"D:\project\hepii")
+    path = Path(r"D:\project\hepii")
+    if not path.exists():
+        pytest.skip(f"project path not present: {path}")
+    res = seb.inspect_project(str(path))
     assert "Rust" in res or "Tauri" in res or "Project Architecture" in res
