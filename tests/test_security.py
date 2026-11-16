@@ -130,8 +130,11 @@ def test_create_task_rejects_outside_attachment(isolated_fs, monkeypatch):
 # ---- P1 shell ----
 
 def test_command_detects_unix_absolute_outside(isolated_fs):
+    # Rooted absolute tokens must be treated as outside the workspace sandbox.
     assert command_references_outside_workspace("cat /etc/hostname") is True
     assert command_references_outside_workspace("rm -rf /tmp/not-ws") is True
+    outside = isolated_fs[0].parent / "evil_dir" / "x"
+    assert command_references_outside_workspace(f"cat {outside}") is True
     # relative / workspace-ish should not flag mere words
     assert command_references_outside_workspace("ls -la") is False
     assert command_references_outside_workspace("python script.py") is False
@@ -147,6 +150,10 @@ def test_run_shell_nontty_denies_outside(isolated_fs, monkeypatch):
 
     with pytest.raises(PermissionDenied):
         asyncio.run(shell.run_shell("cat /etc/hostname"))
+    outside = isolated_fs[0].parent / "nope.txt"
+    outside.write_text("x", encoding="utf-8")
+    with pytest.raises(PermissionDenied):
+        asyncio.run(shell.run_shell(f"type {outside}" if False else f"cat {outside}"))
 
 
 def test_run_shell_nontty_allows_with_auto(isolated_fs, monkeypatch):

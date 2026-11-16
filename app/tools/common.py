@@ -219,6 +219,16 @@ def command_references_outside_workspace(command: str) -> bool:
     for tok in extract_path_tokens(command):
         if tok in ("..",):
             return True
+        # Unix-style absolute path token (also appears on Windows as "\etc\...")
+        if tok.startswith("/") and not tok.startswith("//"):
+            # Rooted absolute path (Unix style; also seen in cross-platform cmds).
+            try:
+                p = Path(tok).expanduser().resolve()
+                if _in_workspace(p) or _in_upload_dir(p):
+                    continue
+            except (OSError, RuntimeError):
+                pass
+            return True
         try:
             p = Path(tok).expanduser()
             if not p.is_absolute():
