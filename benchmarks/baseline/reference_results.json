@@ -1,0 +1,771 @@
+{
+  "suite": "ngu-phase0-agent-benchmark",
+  "version": 1,
+  "catalog_sha256": "78a1236b1b53ff93285b1f9e4cefab2a9fa48001923d7916179218758b83923e",
+  "mode": "reference",
+  "model": "reference",
+  "ctx": 32768,
+  "started_at": "2026-11-16T08:36:12Z",
+  "finished_at": "2026-11-16T08:36:12Z",
+  "elapsed_ms": 32.5,
+  "passed": 25,
+  "failed": 0,
+  "errors": 0,
+  "pass_rate": 1.0,
+  "tasks": [
+    {
+      "task_id": "fs01_list_root",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "list_dir"
+      ],
+      "elapsed_ms": 0.33,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs01_list_root (2 entries)\ndir  .data\nfile hello.txt (6 B)",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "list_dir"
+        },
+        {
+          "type": "max_steps",
+          "ok": true,
+          "detail": "steps=2 <= 4"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs02_read_file",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "read_file"
+      ],
+      "elapsed_ms": 0.3,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs02_read_file/notes.txt (1 lines, showing 1-1)\n1: alpha-beta-gamma",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "read_file"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "alpha-beta-gamma"
+        },
+        {
+          "type": "max_steps",
+          "ok": true,
+          "detail": "steps=2 <= 4"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs03_write_file",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.29,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 5 chars to /tmp/ngu/benchmarks/work/reference/fs03_write_file/out.txt",
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "out.txt"
+        },
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "out.txt"
+        },
+        {
+          "type": "max_steps",
+          "ok": true,
+          "detail": "steps=2 <= 4"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs04_edit_file",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "read_file",
+        "edit_file"
+      ],
+      "elapsed_ms": 0.48,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs04_edit_file/config.txt (1 lines, showing 1-1)\n1: value=OLD\nedited /tmp/ngu/benchmarks/work/reference/fs04_edit_file/config.txt (1 replacement(s), 1 match(es))",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "config.txt has 'NEW'"
+        },
+        {
+          "type": "file_not_contains",
+          "ok": true,
+          "detail": "config.txt lacks 'OLD'"
+        },
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "edit_file"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs05_mkdir",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "make_dir"
+      ],
+      "elapsed_ms": 0.42,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "created directory /tmp/ngu/benchmarks/work/reference/fs05_mkdir/build/output",
+      "checks": [
+        {
+          "type": "dir_exists",
+          "ok": true,
+          "detail": "build/output"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs06_search",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "search_files"
+      ],
+      "elapsed_ms": 0.65,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "a.py:2: # TODO fix",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "search_files"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "a.py"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs07_glob_py",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "list_dir"
+      ],
+      "elapsed_ms": 0.85,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "file main.py",
+      "checks": [
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "main.py"
+        },
+        {
+          "type": "max_steps",
+          "ok": true,
+          "detail": "steps=2 <= 4"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs08_append",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "append_file"
+      ],
+      "elapsed_ms": 0.23,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "appended 7 chars to /tmp/ngu/benchmarks/work/reference/fs08_append/log.txt",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "log.txt has 'first'"
+        },
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "log.txt has 'second'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs09_write_read_roundtrip",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "write_file",
+        "read_file"
+      ],
+      "elapsed_ms": 0.42,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 10 chars to /tmp/ngu/benchmarks/work/reference/fs09_write_read_roundtrip/vars.env\n/tmp/ngu/benchmarks/work/reference/fs09_write_read_roundtrip/vars.env (1 lines, showing 1-1)\n1: secret=42",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "vars.env has 'secret=42'"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "42"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs10_nested_write",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.51,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 3 chars to /tmp/ngu/benchmarks/work/reference/fs10_nested_write/src/pkg/mod.py",
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "src/pkg/mod.py"
+        },
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "src/pkg/mod.py has 'ok'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs11_multi_file",
+      "category": "planning",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "write_file",
+        "write_file"
+      ],
+      "elapsed_ms": 0.46,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 1 chars to /tmp/ngu/benchmarks/work/reference/fs11_multi_file/one.txt\nwrote 1 chars to /tmp/ngu/benchmarks/work/reference/fs11_multi_file/two.txt",
+      "checks": [
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "one.txt"
+        },
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "two.txt"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs12_move",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "move_path"
+      ],
+      "elapsed_ms": 0.35,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "moved /tmp/ngu/benchmarks/work/reference/fs12_move/old_name.txt -> /tmp/ngu/benchmarks/work/reference/fs12_move/new_name.txt",
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "new_name.txt"
+        },
+        {
+          "type": "file_not_exists",
+          "ok": true,
+          "detail": "old_name.txt"
+        },
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "new_name.txt has 'payload'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs13_remove",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "remove_path"
+      ],
+      "elapsed_ms": 0.19,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "removed /tmp/ngu/benchmarks/work/reference/fs13_remove/trash.txt",
+      "checks": [
+        {
+          "type": "file_not_exists",
+          "ok": true,
+          "detail": "trash.txt"
+        },
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "keep.txt"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs14_json_edit",
+      "category": "task_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "read_file",
+        "edit_file"
+      ],
+      "elapsed_ms": 0.67,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs14_json_edit/package.json (4 lines, showing 1-4)\n1: {\n2:   \"name\": \"demo\",\n3:   \"version\": \"0.0.1\"\n4: }\nedited /tmp/ngu/benchmarks/work/reference/fs14_json_edit/package.json (1 replacement(s), 1 match(es))",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "package.json has '0.1.0'"
+        },
+        {
+          "type": "file_not_contains",
+          "ok": true,
+          "detail": "package.json lacks '0.0.1'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs15_fix_syntax",
+      "category": "recovery",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "read_file",
+        "write_file"
+      ],
+      "elapsed_ms": 0.55,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs15_fix_syntax/broken.py (1 lines, showing 1-1)\n1: x =\nwrote 6 chars to /tmp/ngu/benchmarks/work/reference/fs15_fix_syntax/broken.py",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "broken.py has 'x = 1'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "fs16_copy_content",
+      "category": "planning",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "read_file",
+        "write_file"
+      ],
+      "elapsed_ms": 0.39,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/fs16_copy_content/source.txt (2 lines, showing 1-2)\n1: line-a\n2: line-b\nwrote 14 chars to /tmp/ngu/benchmarks/work/reference/fs16_copy_content/dest.txt",
+      "checks": [
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "dest.txt"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "const17_single_file",
+      "category": "constraints",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.36,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 5 chars to /tmp/ngu/benchmarks/work/reference/const17_single_file/target.txt",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "target.txt has 'done'"
+        },
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "other.txt"
+        },
+        {
+          "type": "tool_not_used_on",
+          "ok": true,
+          "detail": "write_file on other.txt"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "const18_no_shell_needed",
+      "category": "constraints",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.33,
+      "rss_mb": 26.62,
+      "outcome": "pass",
+      "answer_preview": "wrote 5 chars to /tmp/ngu/benchmarks/work/reference/const18_no_shell_needed/greeting.txt",
+      "checks": [
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "greeting.txt"
+        },
+        {
+          "type": "tool_not_used",
+          "ok": true,
+          "detail": "run_shell"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "shell19_echo",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "run_shell"
+      ],
+      "elapsed_ms": 2.34,
+      "rss_mb": 26.88,
+      "outcome": "pass",
+      "answer_preview": "$ echo BENCHMARK_OK\n[exit 0]\nBENCHMARK_OK\n",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "run_shell"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "BENCHMARK_OK"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "mem20_save_search",
+      "category": "memory",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "memory_save",
+        "memory_search"
+      ],
+      "elapsed_ms": 11.34,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "memory saved: 'fact1' (18 chars)\n### fact1 [geo]\nParis is in France",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "memory_save"
+        },
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "memory_search"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "Paris"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "plan21_readme_summary",
+      "category": "planning",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "read_file",
+        "write_file"
+      ],
+      "elapsed_ms": 0.47,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/plan21_readme_summary/README.md (3 lines, showing 1-3)\n1: # Demo\n2: \n3: This project counts widgets.\nwrote 32 chars to /tmp/ngu/benchmarks/work/reference/plan21_readme_summary/summary.txt",
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "summary.txt"
+        },
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "read_file"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "rec22_retry_after_missing",
+      "category": "recovery",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 3,
+      "tool_calls": 2,
+      "tool_names": [
+        "write_file",
+        "read_file"
+      ],
+      "elapsed_ms": 0.36,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "wrote 19 chars to /tmp/ngu/benchmarks/work/reference/rec22_retry_after_missing/missing.txt\n/tmp/ngu/benchmarks/work/reference/rec22_retry_after_missing/missing.txt (1 lines, showing 1-1)\n1: created-after-miss",
+      "checks": [
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "missing.txt has 'created-after-miss'"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "created-after-miss"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "false23_must_write",
+      "category": "false_completion",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.29,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "wrote 8 chars to /tmp/ngu/benchmarks/work/reference/false23_must_write/report.md",
+      "checks": [
+        {
+          "type": "file_exists",
+          "ok": true,
+          "detail": "report.md"
+        },
+        {
+          "type": "file_contains",
+          "ok": true,
+          "detail": "report.md has 'complete'"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "steps24_budget",
+      "category": "efficiency",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "write_file"
+      ],
+      "elapsed_ms": 0.19,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "wrote 4 chars to /tmp/ngu/benchmarks/work/reference/steps24_budget/ping.txt",
+      "checks": [
+        {
+          "type": "file_equals",
+          "ok": true,
+          "detail": "ping.txt"
+        },
+        {
+          "type": "max_steps",
+          "ok": true,
+          "detail": "steps=2 <= 3"
+        },
+        {
+          "type": "max_tool_calls",
+          "ok": true,
+          "detail": "tool_calls=1 <= 2"
+        }
+      ],
+      "error": ""
+    },
+    {
+      "task_id": "tree25_list_recursive",
+      "category": "tool_validity",
+      "mode": "reference",
+      "model": "reference",
+      "ctx": 32768,
+      "steps": 2,
+      "tool_calls": 1,
+      "tool_names": [
+        "list_dir"
+      ],
+      "elapsed_ms": 0.49,
+      "rss_mb": 27.48,
+      "outcome": "pass",
+      "answer_preview": "/tmp/ngu/benchmarks/work/reference/tree25_list_recursive\n├── .data/\n│   └── uploads/\n└── d/\n    ├── e/\n    │   └── b.txt\n    └── a.txt",
+      "checks": [
+        {
+          "type": "tool_used",
+          "ok": true,
+          "detail": "list_dir"
+        },
+        {
+          "type": "answer_contains",
+          "ok": true,
+          "detail": "a.txt"
+        }
+      ],
+      "error": ""
+    }
+  ]
+}
