@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import agent, attachments, config, router, store
 from .tools import memory
-from .tools.common import allow_write_path
+from .tools.common import PermissionDenied, path_permission_scope, resolve_attachment_path
 
 log = logging.getLogger("local-agents.runner")
 
@@ -106,7 +106,24 @@ class Runner:
             ) or task
             self._emit_task(task)
 
-            paths = [Path(p) for p in json.loads(task.get("attachments") or "[]")]
+            # Attachments: only paths under UPLOAD_DIR or workspace (no arbitrary abs paths).
+            raw_attachments = json.loads(task.get("attachments") or "[]")
+            paths: list[Path] = []
+            for raw in raw_attachments:
+                try:
+                    paths.append(resolve_attachment_path(raw))
+                except PermissionDenied as exc:
+                    store.update_task(
+                        task_id,
+                        status="failed",
+                        error=str(exc),
+                        finished_at=store.now(),
+                    )
+                    task = store.get_task(task_id) or task
+                    self._emit_task(task)
+                    log.warning("task %s rejected attachment %r: %s", task_id, raw, exc)
+                    return
+
             has_image = any(attachments.classify(p) == "image" for p in paths if p.exists())
             model = task.get("model") or "auto"
             if model == "auto":
@@ -118,20 +135,18 @@ class Runner:
                 store.update_task(task_id, model=model)
                 log.info("task %s has images; switching to vision model %s", task_id, model)
 
+            # Isolate path grants for this task so ALLOWED_* is not process-global.
+            with path_permission_scope():
+                await self._execute_task_body(task_id, task, paths, model)
+            return
+
+    async def _execute_task_body(self, task_id: str, task: dict, paths: list, model: str) -> None:
+            """Agent loop body; runs inside path_permission_scope()."""
             user_content = attachments.build_content(task["prompt"], paths)
             creative = config.is_creative(task["prompt"])
-            # Pre-authorize any external paths mentioned in creative tasks
-            if creative:
-                target_path, _ = config.creative_target_info(task["prompt"])
-                if target_path is not None:
-                    allow_write_path(target_path.parent)
-                # Also allow any absolute path referenced in the prompt
-                import re as _re
-                for m in _re.finditer(r"[A-Za-z]:[\\/][^\s\"'<>|]*|(?<![\\w:.\\-/])/(?:[^\s\"'<>|/]+/)*[^\s\"'<>|/]+", task["prompt"]):
-                    try:
-                        allow_write_path(m.group(0).strip().rstrip("\\/"))
-                    except Exception:  # noqa: BLE001
-                        pass
+            # Do NOT auto-grant write access from prompt text. Outside-workspace
+            # writes go through resolve_path/_ask_permission (interactive CLI) or
+            # fail closed (API/MCP) unless LA_AGENT_ALLOW_ABS=1.
             system = config.CREATIVE_SYSTEM_PROMPT if creative else config.AGENT_SYSTEM_PROMPT
             if creative:
                 hint = config.creative_file_hint(task["prompt"])

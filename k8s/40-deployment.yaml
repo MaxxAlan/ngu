@@ -71,6 +71,12 @@ spec:
                   name: ngu-secrets
                   key: HF_TOKEN
               optional: true
+            - name: LA_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: ngu-secrets
+                  key: LA_API_TOKEN
+              optional: true
           volumeMounts:
             - name: models
               mountPath: /app/models

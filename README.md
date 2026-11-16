@@ -681,6 +681,10 @@ The immediate priority is not to rewrite the whole application or train a founda
 
 ---
 
+## HTTP API authentication
+
+When the server binds beyond localhost (`LA_HOST=0.0.0.0`), set `LA_API_TOKEN` and send `Authorization: Bearer <token>` or `X-API-Key` on API, board, and MCP requests. `/api/health` stays public for probes. See SETUP.md and `k8s/20-secret.example.yaml`.
+
 ## References
 
 - [NGU source repository](https://github.com/MaxxAlan/ngu)
