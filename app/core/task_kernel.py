@@ -401,7 +401,6 @@ def next_runnable_subtask(task_id: str) -> Subtask | None:
     if not rows:
         return None
 
-    by_id = {r["id"]: r for r in rows}
     completed = {r["id"] for r in rows if r["status"] == "completed"}
 
     for r in rows:
