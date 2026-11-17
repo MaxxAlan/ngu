@@ -59,6 +59,13 @@ def init_db() -> None:
         for col, ddl in MIGRATIONS.items():
             if col not in existing:
                 con.execute(ddl)
+        # Phase 1 durable kernel tables (idempotent).
+        try:
+            from app.core.task_kernel import ensure_schema
+
+            ensure_schema(con)
+        except Exception:  # noqa: BLE001 - kernel optional at bootstrap
+            pass
         # Tasks interrupted by a restart: resume from their checkpointed messages
         # if any exist and the retry budget isn't exhausted, else mark failed.
         resumable = con.execute(

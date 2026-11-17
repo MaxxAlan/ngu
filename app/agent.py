@@ -297,6 +297,7 @@ async def run_agent(
     continue_path: str | None = None,
     continue_min_chars: int = 0,
     call_tokens: int | None = None,
+    kernel_task_id: str | None = None,
 ) -> dict:
     """Run the tool-use loop. Returns {"answer": str, "steps": [...]}."""
     max_steps = max_steps or config.AGENT_MAX_STEPS
@@ -311,6 +312,7 @@ async def run_agent(
     max_continuations = 6
     # Track consecutive steps with tool calls but no meaningful text reply.
     silent_tool_steps = 0
+    use_kernel = bool(kernel_task_id) and getattr(config, "TASK_KERNEL", False)
 
     async def emit(event: dict) -> None:
         if on_event is None:
@@ -569,15 +571,65 @@ async def run_agent(
                     result = cached_tool
                     error = ""
                 else:
+                    # Phase 1: track subtask + idempotent tool effects when kernel is on.
+                    sub_id: str | None = None
+                    idem_key: str | None = None
+                    if use_kernel and kernel_task_id:
+                        try:
+                            from app.core import task_kernel as tk
+
+                            sub = tk.add_subtask(
+                                kernel_task_id,
+                                parent_id=None,
+                                description=f"tool:{name}",
+                                status="ready",
+                            )
+                            sub_id = sub.id
+                            tk.mark_subtask_status(sub_id, "in_progress")
+                            idem_key = f"{kernel_task_id}:{sub_id}:{name}"
+                        except Exception as exc:  # noqa: BLE001
+                            log.debug("kernel subtask setup failed: %s", exc)
                     try:
-                        result = await tools.execute(_effective_tool(name, args, continue_path), args)
+                        result = await tools.execute(
+                            _effective_tool(name, args, continue_path),
+                            args,
+                            idempotency_key=idem_key,
+                        )
                         error = ""
                         if result:
                             station.set_tool_cache(name, args, result)
+                        if use_kernel and kernel_task_id and sub_id:
+                            try:
+                                from app.core import task_kernel as tk
+
+                                tk.record_event(
+                                    kernel_task_id,
+                                    sub_id,
+                                    "tool_result",
+                                    {"name": name, "ok": True},
+                                )
+                                tk.mark_subtask_status(sub_id, "completed")
+                                tk.checkpoint(kernel_task_id)
+                            except Exception as exc:  # noqa: BLE001
+                                log.debug("kernel post-tool update failed: %s", exc)
                     except Exception as exc:  # noqa: BLE001 - tool errors go back to the model
                         result = ""
                         error = str(exc)[:1200]
                         log.warning("tool %s failed: %s", name, exc)
+                        if use_kernel and kernel_task_id and sub_id:
+                            try:
+                                from app.core import task_kernel as tk
+
+                                tk.record_event(
+                                    kernel_task_id,
+                                    sub_id,
+                                    "tool_error",
+                                    {"name": name, "error": error},
+                                )
+                                tk.mark_subtask_status(sub_id, "failed")
+                                tk.checkpoint(kernel_task_id)
+                            except Exception:  # noqa: BLE001
+                                pass
                 payload = (error + "\n" + result).strip() if error else result
 
             if not error and result:
