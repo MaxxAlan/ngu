@@ -15,8 +15,8 @@ app/
     task_service.py       # create/list/run/cancel + attachment jail
   infrastructure/         # adapters out
     persistence/          # SQLite task store
-    llm/                  # llama.cpp runtime + HTTP client
-    models/               # GGUF catalog
+    llm/                  # llama.cpp runtime + HTTP client (wrapped by models/backends)
+    models/               # GGUF catalog (app/models package also holds ModelBackend)
   interfaces/             # adapters in
     http/                 # FastAPI board + REST (+ auth middleware)
     mcp/                  # MCP tool surface

@@ -108,6 +108,32 @@ LLAMA_CACHE_TYPE = _get("LA_LLAMA_CACHE_TYPE", "q8_0").strip()
 LLAMA_LOAD_TIMEOUT = _float("LA_LLAMA_LOAD_TIMEOUT", 180)
 SWAP_UNLOAD = _bool("LA_SWAP_UNLOAD", True)
 
+# ---- model backend ------------------------------------------------------
+# Which runtime serves completions. The agent loop only sees ModelBackend.
+#   llama_cpp      local GGUF via llama-server (default; same behavior as before)
+#   ollama         remote/local Ollama POST /api/chat
+#   openai_compat  any OpenAI-compatible server (vLLM, LM Studio, OpenAI, ...)
+# If the selected backend is unreachable, try LA_MODEL_FALLBACK_CHAIN
+# (comma-separated backend names) in order.
+MODEL_BACKEND = _get("LA_MODEL_BACKEND", "llama_cpp").strip() or "llama_cpp"
+# Default model id. llama_cpp still honors the per-request model chosen by the
+# role router; ollama / openai_compat send this name (or the backend-specific
+# override below) instead of a local GGUF alias.
+MODEL_NAME = _get("LA_MODEL_NAME", "").strip()
+MODEL_FALLBACK_CHAIN = _get("LA_MODEL_FALLBACK_CHAIN", "").strip()
+# Optional context-window override for every backend. 0 = backend default
+# (llama.cpp uses LA_LLAMA_CTX; remote backends default to 8192).
+MODEL_CONTEXT = _int("LA_MODEL_CONTEXT", 0)
+MODEL_OLLAMA_BASE_URL = (
+    _get("LA_MODEL_OLLAMA_BASE_URL", "http://127.0.0.1:11434").strip() or "http://127.0.0.1:11434"
+)
+MODEL_OLLAMA_NAME = _get("LA_MODEL_OLLAMA_NAME", "").strip()
+MODEL_OPENAI_BASE_URL = (
+    _get("LA_MODEL_OPENAI_BASE_URL", "http://127.0.0.1:8000/v1").strip() or "http://127.0.0.1:8000/v1"
+)
+MODEL_OPENAI_API_KEY = _get("LA_MODEL_OPENAI_API_KEY", "").strip()
+MODEL_OPENAI_NAME = _get("LA_MODEL_OPENAI_NAME", "").strip()
+
 # ---- agent --------------------------------------------------------------
 DEFAULT_MODEL = _get("LA_DEFAULT_MODEL", "qwen2.5-coder-3b").strip() or "qwen2.5-coder-3b"
 DEFAULT_VISION_MODEL = _get("LA_DEFAULT_VISION_MODEL", "qwen2.5-vl-3b").strip() or "qwen2.5-vl-3b"
