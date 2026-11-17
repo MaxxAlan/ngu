@@ -7,8 +7,9 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from . import config, llm, tools
+from . import config, tools
 from .buffer_station import station
+from .router import acomplete
 
 log = logging.getLogger("local-agents.agent")
 
@@ -113,17 +114,11 @@ async def _plain_answer(
     emit: EventCb,
 ) -> str:
     """Single completion without tools (chit-chat / direct answers)."""
-    if stream:
-        parts: list[str] = []
-        async for event in llm.stream_chat_events(model, messages, tools=None, max_tokens=max_tokens):
-            piece = event.get("content")
-            if piece:
-                parts.append(piece)
-                await emit({"type": "token", "step": 0, "delta": piece})
-        return "".join(parts).strip()
-    resp = await llm.chat(model, messages, tools=None, max_tokens=max_tokens)
-    choice = resp.get("choices", [{}])[0]
-    return ((choice.get("message") or {}).get("content") or "").strip()
+    resp = await acomplete(messages, None, model=model, max_tokens=max_tokens)
+    text = (resp.text or "").strip()
+    if stream and text:
+        await emit({"type": "token", "step": 0, "delta": text})
+    return text
 
 
 def _file_chars(path: str) -> int:
@@ -155,8 +150,7 @@ def _continuation_msg(current: int, target: int) -> str:
 async def _final_answer(model: str, messages: list[dict], max_tokens: int) -> str:
     """Force a plain-text final answer, no tool calls allowed."""
     try:
-        resp = await llm.chat(
-            model,
+        resp = await acomplete(
             messages
             + [
                 {
@@ -167,12 +161,13 @@ async def _final_answer(model: str, messages: list[dict], max_tokens: int) -> st
                     ),
                 }
             ],
+            None,
+            model=model,
             max_tokens=max_tokens,
         )
     except Exception:  # noqa: BLE001 - best effort
         return ""
-    choice = resp.get("choices", [{}])[0]
-    return ((choice.get("message") or {}).get("content") or "").strip()
+    return (resp.text or "").strip()
 
 
 def _parse_json(text: str) -> dict | None:
@@ -250,26 +245,6 @@ def parse_tool_calls(content: str, *, strict: bool = True) -> list[dict]:
         if norm and stripped.startswith("{") and stripped.endswith("}"):
             return [norm]
     return []
-
-
-def _merge_tool_call_deltas(chunks: list[dict]) -> list[dict]:
-    """Merge OpenAI streaming tool_call deltas into complete calls."""
-    merged: dict[int, dict] = {}
-    for chunk in chunks:
-        idx = chunk.get("index", 0)
-        slot = merged.setdefault(idx, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
-        if chunk.get("id"):
-            slot["id"] = chunk["id"]
-        fn = chunk.get("function") or {}
-        if fn.get("name"):
-            slot["function"]["name"] += fn["name"]
-        if fn.get("arguments"):
-            slot["function"]["arguments"] += fn["arguments"]
-    out = []
-    for slot in merged.values():
-        if slot["function"]["name"]:
-            out.append(slot)
-    return out
 
 
 def _call_sig(name: str, args: Any) -> str:
@@ -370,52 +345,36 @@ async def run_agent(
             })
 
         try:
-            if stream:
-                parts: list[str] = []
-                chunks: list[dict] = []
-                buf = ""
-                decided = False
-                suppress = False
-                async for event in llm.stream_chat_events(
-                    model, messages, tools=tools.to_openai_tools(), max_tokens=req_max
-                ):
-                    piece = event.get("content")
-                    if piece:
-                        parts.append(piece)
-                        if not decided:
-                            # hold back a little to see whether this is a tool-call payload
-                            buf += piece
-                            if len(buf.strip()) >= 24:
-                                head = buf.lstrip()
-                                suppress = (
-                                    head.startswith("```json")
-                                    or head.startswith("<tool_call")
-                                    or head.startswith("{")
-                                )
-                                decided = True
-                                if not suppress:
-                                    await emit({"type": "token", "step": i, "delta": buf})
-                        else:
-                            await emit({"type": "token", "step": i, "delta": piece})
-                    call = event.get("tool_call")
-                    if call:
-                        chunks.append(call)
-                if not decided and buf:
-                    head = buf.lstrip()
-                    if not (
-                        head.startswith("```json")
-                        or head.startswith("<tool_call")
-                        or head.startswith("{")
-                    ):
-                        await emit({"type": "token", "step": i, "delta": buf})
-                content = "".join(parts)
-                native = _merge_tool_call_deltas(chunks)
+            resp = await acomplete(
+                messages,
+                tools.to_openai_tools(),
+                model=model,
+                max_tokens=req_max,
+            )
+            content = resp.text or ""
+            if resp.raw_tool_calls:
+                native = list(resp.raw_tool_calls)
             else:
-                resp = await llm.chat(model, messages, tools=tools.to_openai_tools(), max_tokens=req_max)
-                choice = resp.get("choices", [{}])[0]
-                msg = choice.get("message") or {}
-                content = msg.get("content") or ""
-                native = msg.get("tool_calls") or []
+                native = []
+                for n, call in enumerate(resp.tool_calls):
+                    args = call.get("arguments", {})
+                    args_out = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+                    native.append(
+                        {
+                            "id": f"call_{i}_{n}",
+                            "type": "function",
+                            "function": {"name": call.get("name") or "", "arguments": args_out},
+                        }
+                    )
+            if stream and content:
+                head = content.lstrip()
+                suppress = (
+                    head.startswith("```json")
+                    or head.startswith("<tool_call")
+                    or head.startswith("{")
+                )
+                if not suppress:
+                    await emit({"type": "token", "step": i, "delta": content})
         except Exception as exc:  # noqa: BLE001 - a broken step must not kill the run
             llm_failures += 1
             log.warning("llm step failed (step %s): %s", i, exc)
@@ -699,9 +658,14 @@ async def run_agent(
 
     # exhausted steps: ask for final answer once with larger budget if possible
     try:
-        resp = await llm.chat(model, messages + [{"role": "user", "content": "Step limit reached. Provide final answer now in plain text."}], max_tokens=final_max_tokens)
-        choice = resp.get("choices", [{}])[0]
-        content = ((choice.get("message") or {}).get("content") or "").strip()
+        resp = await acomplete(
+            messages
+            + [{"role": "user", "content": "Step limit reached. Provide final answer now in plain text."}],
+            None,
+            model=model,
+            max_tokens=final_max_tokens,
+        )
+        content = (resp.text or "").strip()
         if content:
             return {"answer": content, "steps": steps, "truncated": True}
     except Exception:  # noqa: BLE001

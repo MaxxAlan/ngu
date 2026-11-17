@@ -1,4 +1,9 @@
-"""Compatibility shim — GGUF model catalog."""
+"""Compatibility shim — GGUF model catalog.
+
+Generation backends live in the ``backends`` subpackage and are constructed
+only by ``app.router``. This package stays the catalog so ``import app.models``
+keeps working.
+"""
 from app.infrastructure.models.catalog import *  # noqa: F403
 from app.infrastructure.models.catalog import (  # noqa: F401
     ALIASES,

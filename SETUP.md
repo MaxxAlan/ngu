@@ -194,6 +194,83 @@ ngu novel               # tiến độ dự án truyện
 Trong chat: `/model`, `/models`, `/attach <path>`, `/files`, `/clear-files`, `/reset`,
 `/status`, `/help`, `/exit`, `/write <prompt>`.
 
+## 5.1. Backend model (`LA_MODEL_BACKEND`)
+
+Agent không gọi llama.cpp trực tiếp nữa. Mọi completion đi qua interface
+`ModelBackend` (`app/models/backend.py`). Router (`app/router.py`) chọn backend
+theo `.config` / biến môi trường. Chỉ router import implementation trong
+`app/models/backends/`.
+
+| `LA_MODEL_BACKEND` | Chạy ở đâu | GPU máy này |
+| --- | --- | --- |
+| `llama_cpp` (mặc định) | llama-server local, GGUF trong `models/` | tuỳ build llama.cpp |
+| `ollama` | `POST {base}/api/chat` | không (server ở máy khác cũng được) |
+| `openai_compat` | vLLM, LM Studio, OpenAI, llama-server `/v1` | không |
+
+Nếu backend đang chọn **không kết nối được** (connection error, HTTP 5xx, llama-server
+không lên), router thử lần lượt `LA_MODEL_FALLBACK_CHAIN` (phân tách bằng dấu phẩy)
+và ghi log `falling back to ...`.
+
+`LA_MODEL_NAME` là model id mặc định. Với `llama_cpp`, request vẫn dùng model mà
+role-router chọn (scout / master / vision); `LA_MODEL_NAME` chỉ là default khi
+request không nêu model. Với `ollama` và `openai_compat`, alias GGUF local bị bỏ
+qua — server nhận `LA_MODEL_OLLAMA_NAME` / `LA_MODEL_OPENAI_NAME`, hoặc
+`LA_MODEL_NAME` nếu hai key đó trống.
+
+### llama.cpp (giữ hành vi cũ)
+
+```
+LA_MODEL_BACKEND=llama_cpp
+LA_MODEL_NAME=qwen2.5-coder-3b
+LA_MODEL_FALLBACK_CHAIN=
+# context cửa sổ: LA_LLAMA_CTX (hoặc LA_MODEL_CONTEXT để ghi đè mọi backend)
+```
+
+Không thêm key bắt buộc. `LA_LLAMA_*` như mục llama.cpp phía trên vẫn là runtime.
+
+### Ollama
+
+```
+LA_MODEL_BACKEND=ollama
+LA_MODEL_NAME=qwen2.5-coder:3b
+LA_MODEL_OLLAMA_BASE_URL=http://127.0.0.1:11434
+LA_MODEL_OLLAMA_NAME=qwen2.5-coder:3b
+LA_MODEL_CONTEXT=8192
+LA_MODEL_FALLBACK_CHAIN=llama_cpp
+```
+
+Tool call của Ollama không phải format OpenAI (`arguments` thường là object, đôi khi
+là chuỗi JSON, đôi khi cả list `tool_calls` là một chuỗi). Normalizer
+(`app/models/normalize.py`) đưa về `{name, arguments}`.
+
+### OpenAI-compatible
+
+```
+LA_MODEL_BACKEND=openai_compat
+LA_MODEL_NAME=local-model
+LA_MODEL_OPENAI_BASE_URL=http://127.0.0.1:8000/v1
+LA_MODEL_OPENAI_API_KEY=
+LA_MODEL_OPENAI_NAME=local-model
+LA_MODEL_CONTEXT=8192
+LA_MODEL_FALLBACK_CHAIN=ollama,llama_cpp
+```
+
+`LA_MODEL_OPENAI_BASE_URL` là gốc API (`.../v1`) hoặc URL đầy đủ `.../chat/completions`.
+Để trống `LA_MODEL_OPENAI_API_KEY` khi server local không yêu cầu token (LM Studio, vLLM).
+OpenAI thật: `LA_MODEL_OPENAI_BASE_URL=https://api.openai.com/v1` và điền API key.
+
+| Key | Backend | Ý nghĩa |
+| --- | --- | --- |
+| `LA_MODEL_BACKEND` | router | `llama_cpp` \| `ollama` \| `openai_compat` |
+| `LA_MODEL_NAME` | tất cả | model id mặc định |
+| `LA_MODEL_FALLBACK_CHAIN` | router | backend dự phòng, phân tách bằng dấu phẩy |
+| `LA_MODEL_CONTEXT` | tất cả | context window; `0` = default của backend |
+| `LA_MODEL_OLLAMA_BASE_URL` | ollama | mặc định `http://127.0.0.1:11434` |
+| `LA_MODEL_OLLAMA_NAME` | ollama | ghi đè `LA_MODEL_NAME` |
+| `LA_MODEL_OPENAI_BASE_URL` | openai_compat | mặc định `http://127.0.0.1:8000/v1` |
+| `LA_MODEL_OPENAI_API_KEY` | openai_compat | Bearer token; trống = không gửi header |
+| `LA_MODEL_OPENAI_NAME` | openai_compat | ghi đè `LA_MODEL_NAME` |
+
 ---
 
 ## 6. Bảo mật & quyền
