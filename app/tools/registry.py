@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app import config
+
 from . import bulk, fs, memory, office, search, shell, web
 from .common import ToolError
 
@@ -270,8 +272,56 @@ TOOLS: list[dict] = [
 ]
 
 
-async def execute(name: str, arguments: dict[str, Any]) -> str:
+# Tools with durable side effects — eligible for idempotent replay via tool_effects.
+_SIDE_EFFECT_TOOLS = frozenset(
+    {
+        "write_file",
+        "append_file",
+        "edit_file",
+        "make_dir",
+        "remove_path",
+        "move_path",
+        "run_shell",
+        "memory_save",
+        "memory_delete",
+    }
+)
+
+
+async def execute(
+    name: str,
+    arguments: dict[str, Any],
+    *,
+    idempotency_key: str | None = None,
+) -> str:
+    """Execute a tool. When idempotency_key is set and the tool is side-effecting,
+    a matching prior effect is returned from cache instead of re-running."""
     args = arguments if isinstance(arguments, dict) else {}
+
+    # Phase 1: idempotent replay for side-effecting tools.
+    if idempotency_key and name in _SIDE_EFFECT_TOOLS and config.TASK_KERNEL:
+        try:
+            from app.core.task_kernel import lookup_tool_effect, store_tool_effect
+
+            cached = lookup_tool_effect(idempotency_key, name, args)
+            if cached is not None:
+                return cached if isinstance(cached, str) else str(cached)
+        except Exception:  # noqa: BLE001 - cache miss / kernel offline is fine
+            pass
+
+    result = await _execute_impl(name, args)
+
+    if idempotency_key and name in _SIDE_EFFECT_TOOLS and config.TASK_KERNEL:
+        try:
+            from app.core.task_kernel import store_tool_effect
+
+            store_tool_effect(idempotency_key, name, args, result)
+        except Exception:  # noqa: BLE001
+            pass
+    return result
+
+
+async def _execute_impl(name: str, args: dict[str, Any]) -> str:
     if name == "read_file":
         return fs.read_file(str(args.get("path", "")), int(args.get("offset", 0)), int(args.get("limit", 400)))
     if name == "write_file":

@@ -126,6 +126,9 @@ CHECKPOINT_INTERVAL = max(1, _int("LA_CHECKPOINT_INTERVAL", 3))
 MAX_RESUME_ATTEMPTS = max(0, _int("LA_MAX_RESUME_ATTEMPTS", 3))
 MEMORY_MAX_ENTRIES = _int("LA_MEMORY_MAX_ENTRIES", 2000)
 MEMORY_MAX_AGE_DAYS = _int("LA_MEMORY_MAX_AGE_DAYS", 30)
+# Phase 1 durable task kernel (subtask graph + event log). "off" falls back to
+# the legacy message-based checkpoint path in runner/agent.
+TASK_KERNEL = _get("LA_TASK_KERNEL", "on").strip().lower() not in {"0", "false", "off", "no"}
 
 # ---- novel project ------------------------------------------------------
 NOVEL_TARGET_WORDS = _int("LA_NOVEL_TARGET_WORDS", 1800)

@@ -198,6 +198,64 @@ class Runner:
                     {"role": "user", "content": user_content},
                 ]
 
+            # Phase 1: durable task kernel (optional, behind LA_TASK_KERNEL).
+            kernel_task_id: str | None = None
+            if getattr(config, "TASK_KERNEL", False):
+                try:
+                    from app.core import task_kernel as tk
+
+                    # Prefer an existing kernel task linked by legacy id; else create.
+                    existing = None
+                    try:
+                        # Look up by using legacy_task_id column via a direct query helper
+                        from app.core.task_kernel import _connect, ensure_schema
+
+                        with _connect() as con:
+                            ensure_schema(con)
+                            row = con.execute(
+                                "SELECT id FROM kernel_tasks WHERE legacy_task_id = ? "
+                                "ORDER BY created_at DESC LIMIT 1",
+                                (task_id,),
+                            ).fetchone()
+                            if row:
+                                existing = row["id"]
+                    except Exception:  # noqa: BLE001
+                        existing = None
+                    if existing:
+                        kernel_task_id = existing
+                        state = tk.resume(kernel_task_id)
+                        log.info(
+                            "task %s kernel resume: completed=%d next=%s",
+                            task_id,
+                            len(state.completed_subtask_ids),
+                            state.next_subtask.id if state.next_subtask else None,
+                        )
+                        if state.completed_subtask_ids:
+                            messages.append(
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        "Durable checkpoint: the following subtask IDs are already "
+                                        f"completed and must NOT be repeated: "
+                                        f"{', '.join(state.completed_subtask_ids[:40])}."
+                                    ),
+                                }
+                            )
+                    else:
+                        kt = tk.create_task(
+                            objective=task.get("prompt") or task.get("title") or task_id,
+                            constraints={"source": task.get("source", "ui")},
+                            acceptance={},
+                            legacy_task_id=task_id,
+                            status="running",
+                        )
+                        kernel_task_id = kt.id
+                        tk.checkpoint(kernel_task_id)
+                        log.info("task %s kernel created id=%s", task_id, kernel_task_id)
+                except Exception as exc:  # noqa: BLE001 - kernel is best-effort
+                    log.warning("task kernel unavailable for %s: %s", task_id, exc)
+                    kernel_task_id = None
+
             steps: list[dict] = []
             step_count = 0
 
@@ -246,6 +304,7 @@ class Runner:
                         creative=config.is_creative(task["prompt"]),
                         continue_path=str(target) if target else None,
                         continue_min_chars=min_chars,
+                        kernel_task_id=kernel_task_id,
                     ),
                     timeout=config.TASK_TIMEOUT,
                 )
@@ -258,6 +317,14 @@ class Runner:
                         config.clean_story_file(target_path)
                     answer = f"{answer}\n\nSaved: {saved}"
                     log.info("task %s saved creative output -> %s", task_id, saved)
+                if kernel_task_id and getattr(config, "TASK_KERNEL", False):
+                    try:
+                        from app.core import task_kernel as tk
+
+                        tk.set_task_status(kernel_task_id, "done")
+                        tk.checkpoint(kernel_task_id)
+                    except Exception:  # noqa: BLE001
+                        pass
                 final = store.update_task(
                     task_id,
                     status="done",
@@ -268,6 +335,13 @@ class Runner:
                 )
                 self._emit_task(final or task)
             except asyncio.CancelledError:
+                if kernel_task_id and getattr(config, "TASK_KERNEL", False):
+                    try:
+                        from app.core import task_kernel as tk
+
+                        tk.set_task_status(kernel_task_id, "cancelled")
+                    except Exception:  # noqa: BLE001
+                        pass
                 final = store.update_task(
                     task_id,
                     status="cancelled",
@@ -282,6 +356,14 @@ class Runner:
             except TimeoutError:
                 # Keep the checkpoint: a restart (or manual resubmit) can resume from it.
                 log.warning("task %s timed out after %ss", task_id, config.TASK_TIMEOUT)
+                if kernel_task_id and getattr(config, "TASK_KERNEL", False):
+                    try:
+                        from app.core import task_kernel as tk
+
+                        tk.set_task_status(kernel_task_id, "failed")
+                        tk.checkpoint(kernel_task_id)
+                    except Exception:  # noqa: BLE001
+                        pass
                 final = store.update_task(
                     task_id,
                     status="failed",
@@ -293,6 +375,14 @@ class Runner:
                 self._emit_task(final or task)
             except Exception as exc:  # noqa: BLE001 - failure is a task state
                 log.exception("task %s failed", task_id)
+                if kernel_task_id and getattr(config, "TASK_KERNEL", False):
+                    try:
+                        from app.core import task_kernel as tk
+
+                        tk.set_task_status(kernel_task_id, "failed")
+                        tk.checkpoint(kernel_task_id)
+                    except Exception:  # noqa: BLE001
+                        pass
                 final = store.update_task(
                     task_id,
                     status="failed",
