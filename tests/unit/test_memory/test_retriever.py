@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
 
 from app.core.memory.retriever import retrieve
@@ -10,7 +11,7 @@ from app.core.memory.types import MemoryEntry, make_source, new_id, now_iso
 from app.core.memory.writer import MemoryWriter
 from app.tools import memory as mem_tools
 
-_REPORT = Path("/tmp/phase3_recall.json")
+_REPORT = Path(tempfile.gettempdir()) / "phase3_recall.json"
 
 _TOPICS = {
     "kubernetes": "kubernetes deployment rollout pod namespace",
