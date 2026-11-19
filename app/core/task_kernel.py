@@ -24,17 +24,27 @@ _log = logging.getLogger("local-agents.kernel")
 # ---------------------------------------------------------------------------
 
 TASK_STATUSES = ("draft", "queued", "running", "done", "failed", "cancelled")
-SUBTASK_STATUSES = ("pending", "ready", "in_progress", "completed", "failed", "blocked", "cancelled")
+SUBTASK_STATUSES = (
+    "pending",
+    "ready",
+    "in_progress",
+    "completed",
+    "failed",
+    "blocked",
+    "cancelled",
+    "needs_revalidation",
+)
 
 # Legal subtask transitions (from -> frozenset of allowed next)
 _SUBTASK_TRANSITIONS: dict[str, frozenset[str]] = {
     "pending": frozenset({"ready", "in_progress", "cancelled", "blocked"}),
     "ready": frozenset({"in_progress", "cancelled", "blocked"}),
-    "in_progress": frozenset({"completed", "failed", "blocked", "cancelled"}),
-    "completed": frozenset(),  # terminal
+    "in_progress": frozenset({"completed", "failed", "blocked", "cancelled", "needs_revalidation"}),
+    "completed": frozenset({"needs_revalidation"}),  # external change can reopen
     "failed": frozenset({"pending", "ready", "in_progress"}),  # retry allowed
     "blocked": frozenset({"ready", "pending", "cancelled"}),
     "cancelled": frozenset(),  # terminal
+    "needs_revalidation": frozenset({"pending", "ready", "in_progress", "completed", "failed", "blocked"}),
 }
 
 
@@ -176,9 +186,12 @@ CREATE TABLE IF NOT EXISTS tool_effects (
     tool_name       TEXT NOT NULL,
     args_hash       TEXT NOT NULL,
     result_json     TEXT NOT NULL,
+    args_json       TEXT NOT NULL DEFAULT '{}',
+    subtask_id      TEXT NOT NULL DEFAULT '',
     created_at      TEXT NOT NULL,
     PRIMARY KEY (idempotency_key, tool_name, args_hash)
 );
+CREATE INDEX IF NOT EXISTS idx_tool_effects_subtask ON tool_effects(subtask_id);
 
 CREATE TABLE IF NOT EXISTS checkpoints (
     task_id     TEXT PRIMARY KEY,
@@ -203,6 +216,19 @@ def ensure_schema(con: sqlite3.Connection | None = None) -> None:
             con.execute(
                 "ALTER TABLE kernel_tasks ADD COLUMN legacy_task_id TEXT NOT NULL DEFAULT ''"
             )
+        # Phase 4: tool_effects.args_json / subtask_id for semantic revalidation
+        te_cols = {r["name"] for r in con.execute("PRAGMA table_info(tool_effects)").fetchall()}
+        if "args_json" not in te_cols:
+            con.execute(
+                "ALTER TABLE tool_effects ADD COLUMN args_json TEXT NOT NULL DEFAULT '{}'"
+            )
+        if "subtask_id" not in te_cols:
+            con.execute(
+                "ALTER TABLE tool_effects ADD COLUMN subtask_id TEXT NOT NULL DEFAULT ''"
+            )
+        con.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tool_effects_subtask ON tool_effects(subtask_id)"
+        )
         con.commit()
     finally:
         if own:
@@ -494,8 +520,13 @@ def checkpoint(task_id: str) -> str:
     return marker
 
 
-def resume(task_id: str) -> TaskState:
-    """Return the last valid state after any crash. Does not re-execute completed work."""
+def resume(task_id: str, *, revalidate_effects: bool = True) -> TaskState:
+    """Return the last valid state after any crash.
+
+    When ``revalidate_effects`` is True, completed subtasks with recorded tool
+    effects are checked against the current world. Drift marks the subtask
+    ``needs_revalidation`` so it is not skipped.
+    """
     with _connect() as con:
         ensure_schema(con)
         trow = con.execute("SELECT * FROM kernel_tasks WHERE id = ?", (task_id,)).fetchone()
@@ -511,6 +542,50 @@ def resume(task_id: str) -> TaskState:
         ).fetchone()
 
     task = _row_to_task(trow)
+    subtasks = [_row_to_subtask(r) for r in srows]
+
+    if revalidate_effects:
+        for s in list(subtasks):
+            if s.status != "completed":
+                continue
+            effects = list_tool_effects_for_subtask(s.id)
+            if not effects:
+                continue
+            result = revalidate(s.id)
+            if not result.get("ok"):
+                _log.info(
+                    "resume revalidation failed for subtask %s: %s",
+                    s.id,
+                    result.get("mismatches"),
+                )
+        # Reload after possible status changes
+        with _connect() as con:
+            ensure_schema(con)
+            srows = con.execute(
+                "SELECT * FROM subtasks WHERE task_id = ? ORDER BY created_at ASC",
+                (task_id,),
+            ).fetchall()
+        subtasks = [_row_to_subtask(r) for r in srows]
+
+    # Treat needs_revalidation as not completed
+    completed = [s.id for s in subtasks if s.status == "completed"]
+    # Promote needs_revalidation → ready so next_runnable can pick them up
+    for s in subtasks:
+        if s.status == "needs_revalidation":
+            try:
+                mark_subtask_status(s.id, "ready")
+            except IllegalTransition:
+                try:
+                    mark_subtask_status(s.id, "pending")
+                except IllegalTransition:
+                    pass
+    # Reload once more if we promoted
+    with _connect() as con:
+        ensure_schema(con)
+        srows = con.execute(
+            "SELECT * FROM subtasks WHERE task_id = ? ORDER BY created_at ASC",
+            (task_id,),
+        ).fetchall()
     subtasks = [_row_to_subtask(r) for r in srows]
     completed = [s.id for s in subtasks if s.status == "completed"]
     nxt = next_runnable_subtask(task_id)
@@ -614,18 +689,347 @@ def store_tool_effect(
     tool_name: str,
     args: dict[str, Any],
     result: str,
+    *,
+    subtask_id: str = "",
 ) -> None:
     h = args_hash(args)
     ts = _now()
+    # Derive subtask_id from idempotency key when possible: "{task}:{sub}:{tool}"
+    if not subtask_id and idempotency_key.count(":") >= 2:
+        parts = idempotency_key.split(":")
+        if len(parts) >= 2:
+            subtask_id = parts[1]
     with _connect() as con:
         ensure_schema(con)
         con.execute(
-            "INSERT INTO tool_effects (idempotency_key, tool_name, args_hash, result_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?) "
+            "INSERT INTO tool_effects "
+            "(idempotency_key, tool_name, args_hash, result_json, args_json, subtask_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(idempotency_key, tool_name, args_hash) DO NOTHING",
-            (idempotency_key, tool_name, h, json.dumps(result, ensure_ascii=False), ts),
+            (
+                idempotency_key,
+                tool_name,
+                h,
+                json.dumps(result, ensure_ascii=False),
+                json.dumps(args, ensure_ascii=False, default=str),
+                subtask_id or "",
+                ts,
+            ),
         )
         con.commit()
+
+
+def list_tool_effects_for_subtask(subtask_id: str) -> list[dict[str, Any]]:
+    """Return recorded side-effects for a subtask (for semantic revalidation)."""
+    with _connect() as con:
+        ensure_schema(con)
+        rows = con.execute(
+            "SELECT idempotency_key, tool_name, args_hash, result_json, args_json, subtask_id, created_at "
+            "FROM tool_effects WHERE subtask_id = ? ORDER BY created_at ASC",
+            (subtask_id,),
+        ).fetchall()
+        # Fallback: match by idempotency key pattern containing subtask id
+        if not rows:
+            rows = con.execute(
+                "SELECT idempotency_key, tool_name, args_hash, result_json, args_json, subtask_id, created_at "
+                "FROM tool_effects WHERE idempotency_key LIKE ? ORDER BY created_at ASC",
+                (f"%:{subtask_id}:%",),
+            ).fetchall()
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        try:
+            args = json.loads(r["args_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            args = {}
+        try:
+            result = json.loads(r["result_json"])
+        except (TypeError, json.JSONDecodeError):
+            result = r["result_json"]
+        out.append(
+            {
+                "idempotency_key": r["idempotency_key"],
+                "tool_name": r["tool_name"],
+                "args_hash": r["args_hash"],
+                "args": args,
+                "result": result,
+                "subtask_id": r["subtask_id"],
+                "created_at": r["created_at"],
+            }
+        )
+    return out
+
+
+def _effect_matches_world(effect: dict[str, Any], workspace: Any = None) -> tuple[bool, str]:
+    """Re-check a recorded side-effect against current filesystem/world state."""
+    from pathlib import Path
+
+    from app import config as cfg
+
+    tool = effect.get("tool_name") or ""
+    args = effect.get("args") or {}
+    ws = Path(workspace) if workspace else Path(getattr(cfg, "WORKSPACE_DIR", cfg.BASE_DIR))
+
+    def _resolve(path: str) -> Path:
+        p = Path(path)
+        return p if p.is_absolute() else ws / p
+
+    if tool in ("write_file", "append_file", "edit_file"):
+        path = str(args.get("path") or "")
+        if not path:
+            return True, "no path in effect args — skip check"
+        p = _resolve(path)
+        if not p.exists():
+            return False, f"{tool}: expected file missing: {p}"
+        content = str(args.get("content") or "")
+        if tool == "write_file" and content:
+            try:
+                actual = p.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                return False, f"{tool}: cannot read {p}: {exc}"
+            if actual != content:
+                return False, f"{tool}: content drift at {p}"
+        return True, f"{tool}: {p} still present"
+    if tool == "make_dir":
+        path = str(args.get("path") or "")
+        if not path:
+            return True, "no path"
+        p = _resolve(path)
+        if not p.is_dir():
+            return False, f"make_dir: directory missing: {p}"
+        return True, f"make_dir: {p} exists"
+    if tool == "remove_path":
+        path = str(args.get("path") or "")
+        if not path:
+            return True, "no path"
+        p = _resolve(path)
+        if p.exists():
+            return False, f"remove_path: path still exists: {p}"
+        return True, f"remove_path: {p} gone"
+    # Unknown / non-filesystem tools: assume still valid.
+    return True, f"{tool}: no world-state check defined"
+
+
+def revalidate(subtask_id: str, *, workspace: Any = None) -> dict[str, Any]:
+    """Semantic checkpoint: re-check recorded tool effects against the world.
+
+    If any effect no longer matches, mark the subtask ``needs_revalidation``
+    and return diagnostic details. Caller should route through replan.
+    """
+    effects = list_tool_effects_for_subtask(subtask_id)
+    mismatches: list[dict[str, Any]] = []
+    for eff in effects:
+        ok, evidence = _effect_matches_world(eff, workspace=workspace)
+        if not ok:
+            mismatches.append(
+                {
+                    "tool_name": eff.get("tool_name"),
+                    "idempotency_key": eff.get("idempotency_key"),
+                    "evidence": evidence,
+                }
+            )
+    if not mismatches:
+        return {"ok": True, "subtask_id": subtask_id, "mismatches": []}
+
+    # Mark needs_revalidation so resume will not skip this work.
+    try:
+        sub = mark_subtask_status(subtask_id, "needs_revalidation")
+        task_id = sub.task_id
+    except IllegalTransition:
+        # Already in a state that cannot go to needs_revalidation — force via SQL.
+        with _connect() as con:
+            ensure_schema(con)
+            row = con.execute("SELECT * FROM subtasks WHERE id = ?", (subtask_id,)).fetchone()
+            if row is None:
+                raise KeyError(f"subtask not found: {subtask_id}") from None
+            ts = _now()
+            con.execute(
+                "UPDATE subtasks SET status = ?, updated_at = ? WHERE id = ?",
+                ("needs_revalidation", ts, subtask_id),
+            )
+            con.execute(
+                "INSERT INTO events (id, task_id, subtask_id, kind, payload_json, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    _uid(),
+                    row["task_id"],
+                    subtask_id,
+                    "needs_revalidation",
+                    json.dumps({"mismatches": mismatches}, ensure_ascii=False),
+                    ts,
+                ),
+            )
+            con.commit()
+            task_id = row["task_id"]
+    else:
+        record_event(
+            task_id,
+            subtask_id,
+            "needs_revalidation",
+            {"mismatches": mismatches},
+        )
+    return {
+        "ok": False,
+        "subtask_id": subtask_id,
+        "task_id": task_id,
+        "mismatches": mismatches,
+    }
+
+
+def try_complete_subtask(
+    subtask_id: str,
+    *,
+    workspace: Any = None,
+    llm_callable: Any = None,
+    verify_retries: int | None = None,
+) -> tuple[bool, str]:
+    """Verify acceptance criteria then mark completed (or bounce to in_progress/failed).
+
+    Returns (accepted, evidence_summary). The model's self-declared "done" is ignored
+    when criteria fail.
+    """
+    from app import config as cfg
+    from app.core.verification import evaluate_criteria
+
+    with _connect() as con:
+        ensure_schema(con)
+        row = con.execute("SELECT * FROM subtasks WHERE id = ?", (subtask_id,)).fetchone()
+    if row is None:
+        raise KeyError(f"subtask not found: {subtask_id}")
+    sub = _row_to_subtask(row)
+    acceptance = sub.acceptance or {}
+    # Empty acceptance → pass (tool-level subtasks often have none)
+    if not acceptance or (
+        isinstance(acceptance, dict) and not acceptance.get("criteria") and not acceptance.get("type")
+    ):
+        if isinstance(acceptance, list) and acceptance:
+            pass
+        else:
+            mark_subtask_status(subtask_id, "completed")
+            return True, "no acceptance criteria"
+
+    all_ok, results = evaluate_criteria(
+        acceptance, workspace=workspace, llm_callable=llm_callable
+    )
+    evidence = "; ".join(r.evidence for r in results) if results else "no criteria"
+    if all_ok:
+        mark_subtask_status(subtask_id, "completed")
+        record_event(sub.task_id, subtask_id, "verified", {"passed": True, "evidence": evidence})
+        return True, evidence
+
+    # Fail verification — do not mark completed.
+    max_retries = (
+        verify_retries
+        if verify_retries is not None
+        else int(getattr(cfg, "VERIFIER_MAX_RETRIES", 2))
+    )
+    # Count prior verification failures from events
+    with _connect() as con:
+        ensure_schema(con)
+        n_fail = con.execute(
+            "SELECT COUNT(*) AS n FROM events WHERE subtask_id = ? AND kind = ?",
+            (subtask_id, "verify_failed"),
+        ).fetchone()["n"]
+    record_event(
+        sub.task_id,
+        subtask_id,
+        "verify_failed",
+        {"passed": False, "evidence": evidence, "attempt": n_fail + 1},
+    )
+    if n_fail + 1 > max_retries:
+        try:
+            mark_subtask_status(subtask_id, "failed")
+        except IllegalTransition:
+            pass
+        return False, f"failed after retries: {evidence}"
+    # Bounce back to in_progress so the doer can fix
+    try:
+        if sub.status != "in_progress":
+            # from completed attempt path we might be in_progress already
+            pass
+        # Stay / return to in_progress
+        if sub.status == "completed":
+            pass  # should not happen — we never marked completed
+        mark_subtask_status(subtask_id, "in_progress") if sub.status in (
+            "ready",
+            "pending",
+        ) else None
+    except IllegalTransition:
+        pass
+    return False, evidence
+
+
+def try_complete_task(
+    task_id: str,
+    *,
+    workspace: Any = None,
+    llm_callable: Any = None,
+    summary_path: str | None = None,
+) -> tuple[bool, str]:
+    """Completion gate: all subtasks completed + task-level acceptance + summary artifact.
+
+    On failure the task is set to ``failed`` (kernel status) with a structured diagnostic
+    event. (Runner maps this to blocked/failed as appropriate.)
+    """
+    from pathlib import Path
+
+    from app.core.verification import evaluate_criteria
+
+    state = resume(task_id)
+    incomplete = [s for s in state.subtasks if s.status not in ("completed", "cancelled")]
+    if incomplete:
+        diag = {
+            "reason": "incomplete_subtasks",
+            "subtask_ids": [s.id for s in incomplete],
+            "statuses": {s.id: s.status for s in incomplete},
+        }
+        record_event(task_id, None, "task_blocked", diag)
+        set_task_status(task_id, "failed")
+        return False, json.dumps(diag, ensure_ascii=False)
+
+    all_ok, results = evaluate_criteria(
+        state.task.acceptance, workspace=workspace, llm_callable=llm_callable
+    )
+    evidence_list = [{"type": r.criterion_type, "passed": r.passed, "evidence": r.evidence} for r in results]
+    if not all_ok:
+        diag = {"reason": "acceptance_failed", "results": evidence_list}
+        record_event(task_id, None, "task_blocked", diag)
+        set_task_status(task_id, "failed")
+        return False, json.dumps(diag, ensure_ascii=False)
+
+    # Write summary artifact with links to evidence
+    summary = {
+        "task_id": task_id,
+        "objective": state.task.objective,
+        "status": "completed",
+        "subtasks": [s.to_dict() for s in state.subtasks],
+        "acceptance_results": evidence_list,
+    }
+    if summary_path:
+        sp = Path(summary_path)
+    else:
+        from app import config as cfg
+
+        sp = Path(cfg.DATA_DIR) / "summaries" / f"{task_id}.json"
+    sp.parent.mkdir(parents=True, exist_ok=True)
+    sp.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    record_artifact(task_id, str(sp), sha256=_sha256_file(sp))
+    record_event(task_id, None, "task_verified", {"summary": str(sp), "results": evidence_list})
+    set_task_status(task_id, "done")
+    return True, str(sp)
+
+
+def _sha256_file(path: Any) -> str:
+    import hashlib
+    from pathlib import Path
+
+    h = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return ""
 
 
 # ---------------------------------------------------------------------------

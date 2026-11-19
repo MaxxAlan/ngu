@@ -567,7 +567,14 @@ async def run_agent(
                                     "tool_result",
                                     {"name": name, "ok": True},
                                 )
-                                tk.mark_subtask_status(sub_id, "completed")
+                                # Phase 4: verifier gate — model self-declare is ignored
+                                accepted, evidence = tk.try_complete_subtask(sub_id)
+                                if not accepted:
+                                    log.info(
+                                        "subtask %s verification failed: %s",
+                                        sub_id,
+                                        evidence[:300],
+                                    )
                                 tk.checkpoint(kernel_task_id)
                             except Exception as exc:  # noqa: BLE001
                                 log.debug("kernel post-tool update failed: %s", exc)
