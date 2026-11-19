@@ -156,6 +156,11 @@ MEMORY_MAX_AGE_DAYS = _int("LA_MEMORY_MAX_AGE_DAYS", 30)
 # the legacy message-based checkpoint path in runner/agent.
 TASK_KERNEL = _get("LA_TASK_KERNEL", "on").strip().lower() not in {"0", "false", "off", "no"}
 
+# Phase 4: verifier model for llm_judge criteria. Empty = same model as the doer.
+VERIFIER_MODEL = _get("LA_VERIFIER_MODEL", "").strip()
+# Max verification failures before a subtask is marked failed instead of retried.
+VERIFIER_MAX_RETRIES = max(0, _int("LA_VERIFIER_MAX_RETRIES", 2))
+
 # Context compression. "token" counts with tiktoken / the llama.cpp tokenizer.
 # "char" keeps the legacy character budget. Unknown values fall back to token.
 _BUDGET_STRATEGY = _get("LA_CONTEXT_BUDGET_STRATEGY", "token").strip().lower() or "token"

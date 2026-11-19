@@ -321,7 +321,25 @@ class Runner:
                     try:
                         from app.core import task_kernel as tk
 
-                        tk.set_task_status(kernel_task_id, "done")
+                        # Phase 4 completion gate: subtasks + acceptance + summary
+                        ok, evidence = tk.try_complete_task(kernel_task_id)
+                        if not ok:
+                            log.warning(
+                                "task %s kernel completion blocked: %s",
+                                task_id,
+                                evidence[:400],
+                            )
+                            final = store.update_task(
+                                task_id,
+                                status="failed",
+                                result=answer,
+                                steps=result.get("steps", steps),
+                                messages="[]",
+                                error=f"acceptance criteria failed: {evidence[:500]}",
+                                finished_at=store.now(),
+                            )
+                            self._emit_task(final or task)
+                            return
                         tk.checkpoint(kernel_task_id)
                     except Exception:  # noqa: BLE001
                         pass
