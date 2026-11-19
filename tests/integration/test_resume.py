@@ -16,20 +16,23 @@ os.environ["LA_TASK_KERNEL"] = "on"
 def kernel_db(tmp_path, monkeypatch):
     db_dir = tmp_path / "data"
     db_dir.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
     monkeypatch.setenv("LA_DATA_DIR", str(db_dir))
     import app.config as cfg
 
     monkeypatch.setattr(cfg, "DATA_DIR", db_dir)
     monkeypatch.setattr(cfg, "DB_PATH", db_dir / "tasks.db")
     monkeypatch.setattr(cfg, "TASK_KERNEL", True)
+    monkeypatch.setattr(cfg, "WORKSPACE_DIR", ws)
     from app.core import task_kernel as tk
 
     tk.ensure_schema()
-    return tk
+    return tk, ws
 
 
 def test_crash_and_resume_skips_completed(kernel_db):
-    tk = kernel_db
+    tk, ws = kernel_db
     task = tk.create_task(
         "Write three files then stop",
         acceptance={"files": ["a.txt", "b.txt", "c.txt"]},
@@ -40,14 +43,29 @@ def test_crash_and_resume_skips_completed(kernel_db):
     s2 = tk.add_subtask(task.id, s1.id, "tool:write_file b.txt", depends_on=[s1.id], status="pending")
     s3 = tk.add_subtask(task.id, s2.id, "tool:write_file c.txt", depends_on=[s2.id], status="pending")
 
-    # Complete first two; crash during third.
+    # Complete first two with real files on disk so Phase-4 revalidation still
+    # treats them as completed after crash (world matches recorded effects).
     tk.mark_subtask_status(s1.id, "in_progress")
-    tk.store_tool_effect(f"{task.id}:{s1.id}:write_file", "write_file", {"path": "a.txt"}, "ok-a")
+    (ws / "a.txt").write_text("content-a", encoding="utf-8")
+    tk.store_tool_effect(
+        f"{task.id}:{s1.id}:write_file",
+        "write_file",
+        {"path": "a.txt", "content": "content-a"},
+        "ok-a",
+        subtask_id=s1.id,
+    )
     tk.mark_subtask_status(s1.id, "completed")
     tk.checkpoint(task.id)
 
     tk.mark_subtask_status(s2.id, "in_progress")
-    tk.store_tool_effect(f"{task.id}:{s2.id}:write_file", "write_file", {"path": "b.txt"}, "ok-b")
+    (ws / "b.txt").write_text("content-b", encoding="utf-8")
+    tk.store_tool_effect(
+        f"{task.id}:{s2.id}:write_file",
+        "write_file",
+        {"path": "b.txt", "content": "content-b"},
+        "ok-b",
+        subtask_id=s2.id,
+    )
     tk.mark_subtask_status(s2.id, "completed")
     tk.checkpoint(task.id)
 
@@ -61,21 +79,36 @@ def test_crash_and_resume_skips_completed(kernel_db):
 
     # Idempotent replay of completed tool must return cached result, not re-run.
     cached_a = tk.lookup_tool_effect(
-        f"{task.id}:{s1.id}:write_file", "write_file", {"path": "a.txt"}
+        f"{task.id}:{s1.id}:write_file",
+        "write_file",
+        {"path": "a.txt", "content": "content-a"},
     )
     assert cached_a == "ok-a"
     cached_b = tk.lookup_tool_effect(
-        f"{task.id}:{s2.id}:write_file", "write_file", {"path": "b.txt"}
+        f"{task.id}:{s2.id}:write_file",
+        "write_file",
+        {"path": "b.txt", "content": "content-b"},
     )
     assert cached_b == "ok-b"
     # s3 never stored → miss
     assert (
-        tk.lookup_tool_effect(f"{task.id}:{s3.id}:write_file", "write_file", {"path": "c.txt"})
+        tk.lookup_tool_effect(
+            f"{task.id}:{s3.id}:write_file",
+            "write_file",
+            {"path": "c.txt", "content": "content-c"},
+        )
         is None
     )
 
     # Finish remaining work after resume.
-    tk.store_tool_effect(f"{task.id}:{s3.id}:write_file", "write_file", {"path": "c.txt"}, "ok-c")
+    (ws / "c.txt").write_text("content-c", encoding="utf-8")
+    tk.store_tool_effect(
+        f"{task.id}:{s3.id}:write_file",
+        "write_file",
+        {"path": "c.txt", "content": "content-c"},
+        "ok-c",
+        subtask_id=s3.id,
+    )
     tk.mark_subtask_status(s3.id, "completed")
     tk.set_task_status(task.id, "done")
     tk.checkpoint(task.id)
@@ -87,7 +120,7 @@ def test_crash_and_resume_skips_completed(kernel_db):
 
 
 def test_next_runnable_respects_deps(kernel_db):
-    tk = kernel_db
+    tk, _ws = kernel_db
     t = tk.create_task("deps")
     a = tk.add_subtask(t.id, None, "A", status="ready")
     b = tk.add_subtask(t.id, a.id, "B", depends_on=[a.id], status="pending")
