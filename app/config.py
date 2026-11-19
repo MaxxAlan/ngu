@@ -156,6 +156,12 @@ MEMORY_MAX_AGE_DAYS = _int("LA_MEMORY_MAX_AGE_DAYS", 30)
 # the legacy message-based checkpoint path in runner/agent.
 TASK_KERNEL = _get("LA_TASK_KERNEL", "on").strip().lower() not in {"0", "false", "off", "no"}
 
+# Context compression. "token" counts with tiktoken / the llama.cpp tokenizer.
+# "char" keeps the legacy character budget. Unknown values fall back to token.
+_BUDGET_STRATEGY = _get("LA_CONTEXT_BUDGET_STRATEGY", "token").strip().lower() or "token"
+CONTEXT_BUDGET_STRATEGY = _BUDGET_STRATEGY if _BUDGET_STRATEGY in {"token", "char"} else "token"
+CONTEXT_TOKENIZER = _get("LA_CONTEXT_TOKENIZER", "cl100k_base").strip() or "cl100k_base"
+
 # ---- novel project ------------------------------------------------------
 NOVEL_TARGET_WORDS = _int("LA_NOVEL_TARGET_WORDS", 1800)
 NOVEL_MIN_SCORE = _float("LA_NOVEL_MIN_SCORE", 0.70)

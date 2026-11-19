@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import sqlite3
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -15,6 +16,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app import config
+
+_log = logging.getLogger("local-agents.kernel")
 
 # ---------------------------------------------------------------------------
 # Status vocabulary
@@ -387,7 +390,19 @@ def mark_subtask_status(subtask_id: str, status: str) -> Subtask:
         )
         con.commit()
         row2 = con.execute("SELECT * FROM subtasks WHERE id = ?", (subtask_id,)).fetchone()
+    if status == "completed":
+        _clear_working_memory(subtask_id)
     return _row_to_subtask(row2)
+
+
+def _clear_working_memory(subtask_id: str) -> None:
+    """Ephemeral working memory dies with the subtask. Failures must not roll back status."""
+    try:
+        from app.core.memory.working import WorkingMemory
+
+        WorkingMemory().clear(subtask_id)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("working memory clear failed for %s: %s", subtask_id, exc)
 
 
 def next_runnable_subtask(task_id: str) -> Subtask | None:

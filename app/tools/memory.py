@@ -1,17 +1,13 @@
 """
-Lightweight persistent memory for the agent.
-Uses SQLite FTS5 full-text search – no embedding model required.
+Persistent memory tools.
 
-Tools exposed:
-  memory_save(key, content, tags="")  → store / update a note
-  memory_get(key)                      → exact lookup by key
-  memory_search(query, limit=5, tags="") → keyword / FTS search
-  memory_list(limit=20, tags="")        → list keys (optional tag filter)
-  memory_delete(key)                   → remove one entry
-  memory_prune(...)                    → internal; bound size / age
+The public functions are unchanged (memory_save/get/search/list/delete/prune).
+Writes and search go through the hierarchical engine in ``app.core.memory``;
+the original KV + FTS5 tables stay in sync so older callers keep working.
 """
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 import time
@@ -19,6 +15,8 @@ from pathlib import Path
 
 from .. import config
 from .common import ToolError, clip
+
+log = logging.getLogger("local-agents.memory.tool")
 
 _MEM_DB: Path | None = None
 _INITIALIZED = False
@@ -151,6 +149,7 @@ def memory_save(key: str, content: str, tags: str = "") -> str:
                 (key, tags, now, now),
             )
             _sync_fts(con, key, tags, content)
+        _mirror_save(key, content, tags)
         return f"memory saved: {key!r} ({len(content)} chars)"
     finally:
         con.close()
@@ -192,57 +191,10 @@ def memory_search(query: str, limit: int = 5, tags: str = "") -> str:
         raise ToolError("query must not be empty")
     limit = max(1, min(int(limit), 50))
     tag_filter = (tags or "").strip().lower()
-    con = _connect()
-    try:
-        _ensure_schema(con)
-        rows: list = []
-        match_expr = _fts_query(query)
-        if match_expr:
-            try:
-                sql = (
-                    "SELECT memory_fts.key, memory_meta.tags, memory_kv.content, memory_meta.updated, "
-                    "bm25(memory_fts) AS score "
-                    "FROM memory_fts "
-                    "JOIN memory_meta ON memory_fts.key = memory_meta.key "
-                    "JOIN memory_kv ON memory_fts.key = memory_kv.key "
-                    "WHERE memory_fts MATCH ? "
-                )
-                params: list = [match_expr]
-                if tag_filter:
-                    sql += "AND lower(memory_meta.tags) LIKE ? "
-                    params.append(f"%{tag_filter}%")
-                sql += "ORDER BY score LIMIT ?"
-                params.append(limit)
-                rows = con.execute(sql, params).fetchall()
-            except sqlite3.OperationalError:
-                rows = []
-        if not rows:
-            # LIKE fallback (also used when FTS returns nothing)
-            like = f"%{query.strip()}%"
-            sql = (
-                "SELECT m.key, mm.tags, m.content, mm.updated, 0 AS score "
-                "FROM memory_kv m JOIN memory_meta mm ON m.key = mm.key "
-                "WHERE (m.content LIKE ? OR mm.tags LIKE ? OR m.key LIKE ?) "
-            )
-            params = [like, like, like]
-            if tag_filter:
-                sql += "AND lower(mm.tags) LIKE ? "
-                params.append(f"%{tag_filter}%")
-            sql += "ORDER BY mm.updated DESC LIMIT ?"
-            params.append(limit)
-            rows = con.execute(sql, params).fetchall()
-        if not rows:
-            return f"no memory entries found for query: {query!r}"
-        out: list[str] = []
-        for r in rows:
-            snippet = str(r["content"])
-            if len(snippet) > 500:
-                snippet = snippet[:500] + "…"
-            tag_str = f" [{r['tags']}]" if r["tags"] else ""
-            out.append(f"### {r['key']}{tag_str}\n{snippet}")
-        return clip("\n\n".join(out))
-    finally:
-        con.close()
+    engine_text = _search_engine(query, limit, tag_filter)
+    if engine_text is not None:
+        return engine_text
+    return _legacy_search(query, limit, tag_filter)
 
 
 def memory_list(limit: int = 20, tags: str = "") -> str:
@@ -305,6 +257,8 @@ def memory_prune(max_entries: int | None = None, max_age_days: int | None = None
                 con.execute("DELETE FROM memory_kv WHERE key = ?", (key,))
                 con.execute("DELETE FROM memory_fts WHERE key = ?", (key,))
                 deleted += 1
+        for key in keys:
+            _mirror_delete(key)
         return f"pruned {deleted} memory entries"
     finally:
         con.close()
@@ -324,6 +278,117 @@ def memory_delete(key: str) -> str:
             con.execute("DELETE FROM memory_fts WHERE key = ?", (key,))
         if rows_deleted == 0:
             raise ToolError(f"no memory entry with key: {key!r}")
+        _mirror_delete(key)
         return f"deleted memory: {key!r}"
     finally:
         con.close()
+
+
+def _mirror_save(key: str, content: str, tags: str) -> None:
+    """Route the legacy KV write through the hierarchical engine."""
+    from app.core.memory.types import make_source
+    from app.core.memory.writer import MemoryWriter
+
+    MemoryWriter().upsert_key(
+        key=key,
+        content=content,
+        tags=tags,
+        type="episodic",
+        confidence=1.0,
+        verified_by="tool:memory_save",
+        source=make_source("tool:memory_save", offset=0, key=key),
+    )
+
+
+def _mirror_delete(key: str) -> None:
+    from app.core.memory import sqlite_store as store
+
+    store.delete_by_key(key)
+
+
+def _overlaps(query: str, content: str, key: str, tags: str) -> bool:
+    hay = f"{key}\n{tags}\n{content}".lower()
+    tokens = re.findall(r"[\w\u0080-\uffff]+", query, flags=re.UNICODE)
+    kept = [tok.lower() for tok in tokens if len(tok) >= 2]
+    if not kept:
+        return query.strip().lower() in hay
+    return any(tok in hay for tok in kept)
+
+
+def _search_engine(query: str, limit: int, tag_filter: str) -> str | None:
+    try:
+        from app.core.memory.retriever import retrieve
+
+        hits = retrieve(query, None, None, 8000, tags=tag_filter, limit=max(limit, 5))
+    except Exception as exc:  # noqa: BLE001
+        log.warning("hierarchical retrieval failed (%s); using legacy FTS", exc)
+        return None
+    lexical = [hit for hit in hits if _overlaps(query, hit.content, hit.key or "", hit.tags)]
+    if not lexical:
+        return None
+    out: list[str] = []
+    for hit in lexical[:limit]:
+        snippet = hit.content
+        if len(snippet) > 500:
+            snippet = snippet[:500] + "…"
+        tag_str = f" [{hit.tags}]" if hit.tags else ""
+        origin = ""
+        if isinstance(hit.source_json, dict):
+            origin = str(hit.source_json.get("origin") or "")
+        score = f"{hit.score:.4f}" if isinstance(hit.score, float) else "?"
+        out.append(f"### {hit.key or hit.id}{tag_str}\n{snippet}\nsource: {origin} score: {score}")
+    return clip("\n\n".join(out))
+
+
+def _legacy_search(query: str, limit: int, tag_filter: str) -> str:
+    con = _connect()
+    try:
+        _ensure_schema(con)
+        rows: list = []
+        match_expr = _fts_query(query)
+        if match_expr:
+            try:
+                sql = (
+                    "SELECT memory_fts.key, memory_meta.tags, memory_kv.content, memory_meta.updated, "
+                    "bm25(memory_fts) AS score "
+                    "FROM memory_fts "
+                    "JOIN memory_meta ON memory_fts.key = memory_meta.key "
+                    "JOIN memory_kv ON memory_fts.key = memory_kv.key "
+                    "WHERE memory_fts MATCH ? "
+                )
+                params: list = [match_expr]
+                if tag_filter:
+                    sql += "AND lower(memory_meta.tags) LIKE ? "
+                    params.append(f"%{tag_filter}%")
+                sql += "ORDER BY score LIMIT ?"
+                params.append(limit)
+                rows = con.execute(sql, params).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
+        if not rows:
+            like = f"%{query.strip()}%"
+            sql = (
+                "SELECT m.key, mm.tags, m.content, mm.updated, 0 AS score "
+                "FROM memory_kv m JOIN memory_meta mm ON m.key = mm.key "
+                "WHERE (m.content LIKE ? OR mm.tags LIKE ? OR m.key LIKE ?) "
+            )
+            params = [like, like, like]
+            if tag_filter:
+                sql += "AND lower(mm.tags) LIKE ? "
+                params.append(f"%{tag_filter}%")
+            sql += "ORDER BY mm.updated DESC LIMIT ?"
+            params.append(limit)
+            rows = con.execute(sql, params).fetchall()
+        if not rows:
+            return f"no memory entries found for query: {query!r}"
+        out: list[str] = []
+        for row in rows:
+            snippet = str(row["content"])
+            if len(snippet) > 500:
+                snippet = snippet[:500] + "…"
+            tag_str = f" [{row['tags']}]" if row["tags"] else ""
+            out.append(f"### {row['key']}{tag_str}\n{snippet}")
+        return clip("\n\n".join(out))
+    finally:
+        con.close()
+

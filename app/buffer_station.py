@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config
+from .core.context.budget import count_chars, count_tokens, truncate_to_budget
 
 log = logging.getLogger("local-agents.buffer")
 
@@ -93,57 +94,89 @@ class AIBufferStation:
         self,
         messages: list[dict[str, Any]],
         max_total_chars: int = 14000,
+        max_tokens: int | None = None,
+        tokenizer_name: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Compress older messages and historical tool outputs.
-        Prevents context bloating which causes VRAM exhaustion and severe token slowdown.
+        """Compress older messages using a token budget (or char, if configured).
+
+        ``max_total_chars`` is the legacy knob used by the agent loop. Under
+        ``LA_CONTEXT_BUDGET_STRATEGY=token`` (the default) it is converted at
+        ~4 chars/token so the same call site keeps a similar window. The latest
+        three messages are always kept; older tool and assistant turns are
+        truncated, then dropped once the budget is spent.
         """
         if not messages:
             return messages
 
-        head = messages[:1]  # System prompt
-        body = messages[1:]
+        strategy = str(getattr(config, "CONTEXT_BUDGET_STRATEGY", "token") or "token").strip().lower()
+        if strategy not in {"token", "char"}:
+            strategy = "token"
+        tokenizer = tokenizer_name or str(
+            getattr(config, "CONTEXT_TOKENIZER", "cl100k_base") or "cl100k_base"
+        )
 
-        # Process from newest to oldest
+        def units(text: str) -> int:
+            if strategy == "char":
+                return count_chars(text)
+            return count_tokens(text, tokenizer)
+
+        if strategy == "token":
+            if max_tokens is None:
+                budget = max(1, int(max_total_chars) // 4)
+            else:
+                budget = max(1, int(max_tokens))
+            tool_limit, tool_keep = 80, 60
+            asst_limit, asst_keep = 400, 150
+        else:
+            budget = max(1, int(max_total_chars))
+            tool_limit, tool_keep = 300, 250
+            asst_limit, asst_keep = 1500, 600
+
+        head = messages[:1]
+        body = messages[1:]
         reversed_body = list(reversed(body))
-        budget = max_total_chars
         kept_body: list[dict[str, Any]] = []
 
         for idx, msg in enumerate(reversed_body):
             role = msg.get("role")
-            content = msg.get("content") or ""
+            content = str(msg.get("content") or "")
 
-            # Keep latest 3 messages intact
+            # Keep the live turn intact even if it is already large.
             if idx < 3:
                 kept_body.append(msg)
-                budget -= len(str(content))
+                budget -= units(content)
                 continue
 
-            # For older tool outputs, aggressively summarize/truncate
-            if role == "tool":
-                str_content = str(content)
-                if len(str_content) > 300:
-                    truncated = str_content[:250] + f"\n... [buffer station: compressed older tool output {len(str_content)} chars]"
-                    new_msg = dict(msg)
-                    new_msg["content"] = truncated
-                    kept_body.append(new_msg)
-                    budget -= len(truncated)
-                    continue
-
-            # Older assistant messages with large code
-            if role == "assistant" and len(str(content)) > 1500:
-                str_content = str(content)
-                truncated = str_content[:600] + "\n... [previous answer truncated to save context]"
+            if role == "tool" and units(content) > tool_limit:
+                truncated = truncate_to_budget(
+                    content,
+                    tool_keep,
+                    strategy=strategy,
+                    tokenizer_name=tokenizer,
+                )
                 new_msg = dict(msg)
-                new_msg["content"] = truncated
+                new_msg["content"] = truncated + "\n... [buffer station: compressed older tool output]"
                 kept_body.append(new_msg)
-                budget -= len(truncated)
+                budget -= units(str(new_msg["content"]))
+                continue
+
+            if role == "assistant" and units(content) > asst_limit:
+                truncated = truncate_to_budget(
+                    content,
+                    asst_keep,
+                    strategy=strategy,
+                    tokenizer_name=tokenizer,
+                )
+                new_msg = dict(msg)
+                new_msg["content"] = truncated + "\n... [previous answer truncated to save context]"
+                kept_body.append(new_msg)
+                budget -= units(str(new_msg["content"]))
                 continue
 
             if budget > 0:
                 kept_body.append(msg)
-                budget -= len(str(content))
+                budget -= units(content)
             else:
-                # Out of budget for older turns, skip very old turns
                 break
 
         return head + list(reversed(kept_body))
