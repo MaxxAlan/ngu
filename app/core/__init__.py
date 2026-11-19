@@ -11,7 +11,11 @@ from app.core.task_kernel import (
     next_runnable_subtask,
     record_event,
     resume,
+    revalidate,
+    try_complete_subtask,
+    try_complete_task,
 )
+from app.core.verification import Verifier, evaluate_criteria, normalize_criteria
 
 __all__ = [
     "Task",
@@ -24,4 +28,10 @@ __all__ = [
     "record_event",
     "checkpoint",
     "resume",
+    "revalidate",
+    "try_complete_subtask",
+    "try_complete_task",
+    "Verifier",
+    "evaluate_criteria",
+    "normalize_criteria",
 ]
