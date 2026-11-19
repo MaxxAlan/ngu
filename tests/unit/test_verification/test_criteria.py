@@ -78,13 +78,14 @@ def test_file_contains_fail_missing_file(verifier: Verifier):
 
 
 def test_shell_exit_0_pass(verifier: Verifier):
-    r = verifier.evaluate({"type": "shell_exit_0", "cmd": "true"})
+    # Cross-platform: `true`/`false` do not exist on Windows cmd.exe
+    r = verifier.evaluate({"type": "shell_exit_0", "cmd": 'python -c "raise SystemExit(0)"'})
     assert r.passed
     assert "exit=0" in r.evidence
 
 
 def test_shell_exit_0_fail(verifier: Verifier):
-    r = verifier.evaluate({"type": "shell_exit_0", "cmd": "false"})
+    r = verifier.evaluate({"type": "shell_exit_0", "cmd": 'python -c "raise SystemExit(1)"'})
     assert not r.passed
 
 
@@ -92,12 +93,12 @@ def test_shell_exit_0_fail(verifier: Verifier):
 
 
 def test_test_passes_pass(verifier: Verifier):
-    r = verifier.evaluate({"type": "test_passes", "cmd": "python -c 'assert 1+1==2'"})
+    r = verifier.evaluate({"type": "test_passes", "cmd": 'python -c "assert 1+1==2"'})
     assert r.passed
 
 
 def test_test_passes_fail(verifier: Verifier):
-    r = verifier.evaluate({"type": "test_passes", "cmd": "python -c 'assert 1+1==3'"})
+    r = verifier.evaluate({"type": "test_passes", "cmd": 'python -c "assert 1+1==3"'})
     assert not r.passed
     assert "exit=" in r.evidence
 
@@ -138,7 +139,7 @@ def test_evaluate_criteria_all_pass(ws: Path):
     ok, results = evaluate_criteria(
         [
             {"type": "file_exists", "path": "a.txt"},
-            {"type": "shell_exit_0", "cmd": "true"},
+            {"type": "shell_exit_0", "cmd": 'python -c "raise SystemExit(0)"'},
         ],
         workspace=ws,
     )
@@ -150,7 +151,7 @@ def test_evaluate_criteria_one_fail(ws: Path):
     ok, results = evaluate_criteria(
         [
             {"type": "file_exists", "path": "nope.txt"},
-            {"type": "shell_exit_0", "cmd": "true"},
+            {"type": "shell_exit_0", "cmd": 'python -c "raise SystemExit(0)"'},
         ],
         workspace=ws,
     )
