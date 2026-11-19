@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import tempfile
 from pathlib import Path
 
 import tiktoken
@@ -13,7 +14,7 @@ from app import config
 from app.buffer_station import AIBufferStation
 from app.core.context import budget
 
-_REPORT = Path("/tmp/phase3_context.json")
+_REPORT = Path(tempfile.gettempdir()) / "phase3_context.json"
 
 
 def test_tiktoken_matches_library():
@@ -39,7 +40,7 @@ def test_compress_does_not_budget_with_len():
 def test_token_strategy_truncates_old_tool_output(monkeypatch):
     monkeypatch.setattr(config, "CONTEXT_BUDGET_STRATEGY", "token")
     monkeypatch.setattr(config, "CONTEXT_TOKENIZER", "cl100k_base")
-    station = AIBufferStation(cache_file=Path("/tmp/phase3-station-cache.json"))
+    station = AIBufferStation(cache_file=Path(tempfile.gettempdir()) / "phase3-station-cache.json")
     fat = "tool output line\n" * 400
     messages = [
         {"role": "system", "content": "You are ngu."},
@@ -65,7 +66,7 @@ def test_context_size_before_after_fs04(monkeypatch):
     or 3072 tokens.
     """
     monkeypatch.setattr(config, "CONTEXT_TOKENIZER", "cl100k_base")
-    station = AIBufferStation(cache_file=Path("/tmp/phase3-station-fs04.json"))
+    station = AIBufferStation(cache_file=Path(tempfile.gettempdir()) / "phase3-station-fs04.json")
     ctx = 4096
     char_budget = max(4000, ctx * 3)
     system = (
